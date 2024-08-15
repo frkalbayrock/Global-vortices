@@ -12,22 +12,28 @@ export flattenDimension
 #[CQC in 1d gives a matrix but 2d gives a 4-index object (not a tensor)]
 function flattenDimension(f)
 
-    #Check if the incoming field is real or complex for memory purposes(we define f_s accordingly)
-    if eltype(f) == Float64
-        f_s = zeros(Nx*Ny)          #"s" stands for single
-    elseif eltype(f) == ComplexF64
-        f_s = im*zeros(Nx*Ny)
-    else
-        println("Error: given type not float or complex float.")
-    end
+    # #-Version 1
+        # #Check if the incoming field is real or complex for memory purposes(we define f_s accordingly)
+        # if eltype(f) == Float64
+        #     # f_s = zeros(Nx*Ny)          #"s" stands for single
+        #     f_s = Array{Float64,1}(undef, Nx*Ny)    #"s" stands for single
+        # elseif eltype(f) == ComplexF64
+        #     # f_s = im*zeros(Nx*Ny)
+        #     f_s = Array{ComplexF64,1}(undef, Nx*Ny)
+        # else
+        #     println("Error: given type not float or complex float.")
+        # end
 
-    for j=lx:rx
-        for k=ly:ry
-            #Get the flatten ordered index
-            J = twoIndexToOne(j,k)
-            f_s[J] = f[j,k]
-        end
-    end
+        # for j=lx:rx
+        #     for k=ly:ry
+        #         #Get the flatten ordered index
+        #         J = twoIndexToOne(j,k)
+        #         f_s[J] = f[j,k]
+        #     end
+        # end
+
+    #-Version 2 (uses the intrinsic flatten function from Julia)
+        f_s = collect(Iterators.flatten(f'))    #! seems to be faster and uses less allocations/memory
 
     return f_s
 end
@@ -40,12 +46,14 @@ function ravelDimension(f)
 
     #Check if the incoming field is real or complex for memory purposes(we define f_s accordingly)
     if eltype(f) == Float64
-        f_t = zeros(Nx,Ny)          #"s" stands for single
+        f_t = Array{Float64,2}(undef, Nx,Ny)    #"t" stands for "two-index"
     elseif eltype(f) == ComplexF64
-        f_t = im*zeros(Nx,Ny)
+        f_t = Array{ComplexF64,2}(undef, Nx,Ny)
     else
         println("---> Error: given type not float or complex float.")
         println(typeof(f))
+        # print("---> Error: given type not float or complex float.\n")
+        # print(typeof(f),"\n")
     end
     f_t = OffsetArray(f_t,lx:rx,ly:ry)
 
@@ -59,25 +67,59 @@ end
 
 export mapZTo4Index
 #This routine is particular for Z and dZdt which have 4-indices in 2d CQC setting.
-#It takes the flattened Z_JK values and maps them to Z_jlkm 
+#It takes the flattened Z_JK (or dZdt_JK) values and maps them to Z_jlkm (or dZdt_jlkm)
 #where 'j' and 'k' are for space coordinates and 'l' and 'm' are the auxillary indices for CQC.
-function mapZTo4Index(Z,dZdt)
+function mapZTo4Index(ZordZ)
 
-    Z_t = im*zeros(Nx,Nx,Ny,Ny)
-    dZdt_t = im*zeros(Nx,Nx,Ny,Ny)
-    Z_t = OffsetArray(Z_t,lx:rx,lx:rx,ly:ry,ly:ry)
-    dZdt_t = OffsetArray(dZdt_t,lx:rx,lx:rx,ly:ry,ly:ry)
+    ZordZ_t = im*zeros(Nx,Nx,Ny,Ny) #t stands for "two-index" for each given index (i.e. j,k <- J)
+    ZordZ_t = OffsetArray(ZordZ_t,lx:rx,lx:rx,ly:ry,ly:ry)
 
     for J=1:N^2
         for K=1:N^2
             j,k = oneIndexToTwo(J)
             l,m = oneIndexToTwo(K)
-            Z_t[j,l,k,m] = Z[J,K]
-            dZdt_t[j,l,k,m] = dZdt[J,K]
+            ZordZ_t[j,l,k,m] = ZordZ[J,K]
         end
     end
 
-return Z_t, dZdt_t
+return ZordZ_t
+end
+
+export mapZTo2Index
+function mapZTo2Index(ZordZ)
+
+    #Version 1 (direct mapping)
+        #     ZordZ_f = Array{ComplexF64,2}(undef, Nx*Ny,Nx*Ny)  #f stands for "four"
+        #     for j=lx:rx
+        #         for k=ly:ry
+        #             for l=lx:rx
+        #                 for m=ly:ry
+        #                     J = twoIndexToOne(j,k)
+        #                     K = twoIndexToOne(l,m)
+        #                     ZordZ_f[J,K] = ZordZ[j,l,k,m]
+        #                 end
+        #             end
+        #         end
+        #     end
+        # return ZordZ_f
+
+    #Version 2 (uses the flattenDimension function)
+        #Map the space coordinates
+        Z_spaceFlatten = Array{ComplexF64,3}(undef, Nx*Ny,Nx,Ny)
+        Z_spaceFlatten = OffsetArray(Z_spaceFlatten, 1:Nx*Ny,lx:rx, ly:ry)
+        for l=lx:rx
+            for m=ly:ry
+                Z_spaceFlatten[:,l,m] .= flattenDimension(ZordZ[:,l,:,m])
+            end
+        end
+
+        #Map the auxillary coordinates
+        Z_Flatten = Array{ComplexF64,2}(undef, Nx*Ny,Nx*Ny)
+        for J=1:Nx*Ny
+            Z_Flatten[J,:] .= flattenDimension(Z_spaceFlatten[J,:,:])
+        end
+
+    return Z_Flatten
 end
 
 #Reducing a 2d lattice into a 1d one using row-major ordering. (Flattenning)

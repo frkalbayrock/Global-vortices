@@ -6,39 +6,62 @@ using LinearAlgebra
 include("IndexMap.jl")
 using .IndexMap
 
+#!
+using OffsetArrays
+#!
+using Profile
+using PProf
+
 #------------------------------------------------------------------------------------------------#
     #initialConditions sets the initial conditions for the fields ϕ,ψ,Z and calculates the renormalization factor
 export initialConditions!
 #Set initial conditions for the fields ϕ, ψ, ρ
 function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
-width=0.5
-amp=10
-    #ϕ and ψ i.c.
-    for j=lx:rx
-        x=j*dx
-        for k=ly:ry
-            y=k*dy
-            ϕ[j,k,0] = eta
-            ψ[j,k,0] = amp*exp(-x^2*width)*exp(-y^2*width)
-            dϕdt[j,k,0] = 0
-            dψdt[j,k,0] = 0
+
+@time Profile.Allocs.@profile sample_rate=1  begin    
+    width=2.0
+    amp=10
+    # vel=0.5
+    vx=0.3
+    vy=0.4
+    r0=1.25
+    γ=1/sqrt(1-(vx^2+vy^2))
+        #ϕ and ψ i.c.
+        for j=lx:rx
+            x=j*dx
+            x1 = x-r0
+            x2 = x+r0
+            for k=ly:ry
+                y=k*dy
+                y1 = y-r0
+                y2 = y+r0
+                ϕ[j,k,0] = η
+                dϕdt[j,k,0] = 0
+                ψ[j,k,0] = amp*(exp( -width/(vx^2 + vy^2)
+                                    * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )
+                            + exp( -width/(vx^2 + vy^2) 
+                                    * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
+                dψdt[j,k,0] = ( 2amp *width *γ^2 *(x1 *(-vx) + y1 *(-vy)) 
+                                *exp(-width/(vx^2 + vy^2) * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1 *(-vy))^2 * γ^2 ))
+                            + 2amp *width *γ^2 *(x2 *(vx) + y2 *(vy)) 
+                                *exp(-width/(vx^2 + vy^2) * ( (x2 *(vy) - y2 *(vx))^2 + (x2* (vx) + y2 *(vy))^2 * γ^2 ))    )
+            end
         end
-    end
 
-    #2-index to 1-index mapping
-    ϕ_s = flattenDimension(ϕ[:,:,0])
-    ψ_s = flattenDimension(ψ[:,:,0])
-    #Get Sqrt(Omega) and its inverse matrices
-    S_Ωzero, inv_S_Ωzero = omegaIC(ϕ_s,ψ_s)
+        #2-index to 1-index mapping
+        ϕ_s = @views flattenDimension(ϕ[:,:,0])
+        ψ_s = @views flattenDimension(ψ[:,:,0])
+        #Get Sqrt(Omega) and its inverse matrices
+        S_Ωzero, inv_S_Ωzero = omegaIC(ϕ_s,ψ_s)
 
-    #Z (ρ) i.c.
-    for J=1:N^2
-        for K=1:N^2
-            Z[J,K,1]=-im/sqrt(2) * inv_S_Ωzero[J,K]
-            dZdt[J,K,1] = 1/sqrt(2) * S_Ωzero[J,K]
+        #Z (ρ) i.c.
+        for J=1:N^2
+            for K=1:N^2
+                Z[J,K,1]=-im/sqrt(2) * inv_S_Ωzero[J,K]
+                dZdt[J,K,1] = 1/sqrt(2) * S_Ωzero[J,K]
+            end
         end
-    end
-
+end
 end
 #------------------------------------------------------------------------------------------------#
 
@@ -123,7 +146,7 @@ function omegaIC(ϕ_s,ψ_s)
     end
 
     ###################--CHOOSE ONE OF THEM--###########################
-    #Taking sqrt of matrix Ω (version 1) #!--->This looks faster for N=3 test (but for N=60,70 got slower and uses more ram)
+    # Taking sqrt of matrix Ω (version 1) #!--->This looks faster for N=3 test (but for N=60,70 got slower and uses more ram)
     # eigenValues=eigvals(Ω)
     # similarityMatrix = eigvecs(Ω)
     # diag_S_Ωzero=zeros(1:N^2,1:N^2)
@@ -169,8 +192,34 @@ function renormalization(Z)
         meanSqrRenorm = meanSqrRenorm + abs2(Z[N^2,K,1]) #There is an overall factor of 1/(dx*dy) which we omit here;
     end                                                  #It is added wherever we use this two-point function
 
+    meanSqrRenorm_v2 = sum(abs2,Z[N^2,:,1])#!
+    println(meanSqrRenorm)#!
+    println(meanSqrRenorm_v2)#!
     return meanSqrRenorm
 end
 #------------------------------------------------------------------------------------------------#
+
+export zeroPointEnergy
+function zeroPointEnergy(Z,dZdt)
+    kEZRen = 0.
+    gEZRen = 0.
+    pEZRen = 0.
+    for K=1:N^2
+        kEZRen = kEZRen + ( abs2( dZdt[N^2,K,1] ) )/2
+        gEZRen = gEZRen + ( abs2( (Z[N^2,K,1] - Z[N^2-N,K,1])/dx ) 
+                          + abs2( (Z[N^2,K,1] - Z[N^2-1,K,1])/dy ) )/2
+        pEZRen = pEZRen + m_ρ^2*( abs2(Z[N^2,K,1]) )/2
+        # #!
+        # kEZRen = kEZRen + ( abs2( dZdtREN[K] ) )/2
+        # gEZRen = gEZRen + ( abs2( (ZREN[K,1] - ZREN[K,2])/dx ) 
+        #                     + abs2( (ZREN[K,1] - ZREN[K,3])/dy ) )/2
+        # pEZRen = pEZRen + m_ρ^2*( abs2(ZREN[K,1]) )/2
+        # #!
+    end
+
+    zPE = (kEZRen+gEZRen+pEZRen)/(dx*dy)
+
+    return zPE
+end
 
 end
