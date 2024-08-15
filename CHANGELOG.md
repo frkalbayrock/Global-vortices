@@ -4,9 +4,43 @@
 #### v0.2
 Serial code is completed up to finding strings routine.
 The code takes given inital conditions, find energy at any stage, time evolve the system by solving the differential equations of the theory and take a snapshot at given intervals. 
+
+All the changes listed:
+Auxiliary.jl:
+- @views is used wherever possible
+- gEϕψ and gEZ are now calculated forward and backward and then average is taken
+- Zero-point energy calculation no longer uses the corner of the lattice at every time step:
+    Now zPE calculated in the beginning (using the corner) and passed into energy().
+IC.jl
+- Full physical initial conditions are set for all the fields
+- @views is use whenever possible.
+- zeroPointEnergy() created for energy calculation
+- renormalization() updated with intrinsic Julia function
+IndexMap.jl
+- flattenDimension() updated with intrinsic function
+- ravelDimension() updated for better performance; temporary array is created without allocation
+- mapZTo4Index() updated to handle both Z and dZdt (still not memory optimized**)
+- mapZto2Index() function created for reserve mapping of Z
+main.jl
+- New modules are included
+- New benchmark and profiling tools are added
+- Z and dZdt are implicitly defined for better memory
+- "Information about the run" part added
+    This includes writing info to a text file as well as to the console
+- Initial conditions are now being recorded
+Parameters.jl
+- All the parameters are defined as const global variables which gave an enormouse memory optimization along with performance.
+
+Newly added modules
+- Constrains.jl: Checks the contraint and conserved quantities of CQC for stability purposes (like checking constant energy)
+- Evolution.jl: Time evolution of the system by numerically solving the differential equations given by the theory
+                This is done in both leap-frog method and Crank-Nicolson method
+                
 Next stage:
 - Parallelization (CPU)
 - Finding defects with winding number calculations
+
+
 
 
 #### v0.1
