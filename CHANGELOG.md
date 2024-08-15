@@ -35,7 +35,10 @@ Newly added modules
 - Constrains.jl: Checks the contraint and conserved quantities of CQC for stability purposes (like checking constant energy)
 - Evolution.jl: Time evolution of the system by numerically solving the differential equations given by the theory
                 This is done in both leap-frog method and Crank-Nicolson method
-                
+
+###### COMPLETE DEBUGGING OF THE ENTIRE CODE IS DONE DUE TO NOT CONSTANT ENERGY. SEARCH FOR THE REASON PUSHED US FOR COMPLETE TESTING OF THE FULL CODE. THE REASON AT THE END IS FOUND TO BE WRONG PHYSICAL INTUITION FOR ZERO-POINT ENERGY.
+
+
 Next stage:
 - Parallelization (CPU)
 - Finding defects with winding number calculations
