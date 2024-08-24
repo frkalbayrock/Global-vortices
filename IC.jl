@@ -18,7 +18,6 @@ export initialConditions!
 #Set initial conditions for the fields ϕ, ψ, ρ
 function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
 
-@time Profile.Allocs.@profile sample_rate=1  begin    
     width=2.0
     amp=10
     # vel=0.5
@@ -27,11 +26,11 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
     r0=1.25
     γ=1/sqrt(1-(vx^2+vy^2))
         #ϕ and ψ i.c.
-        for j=lx:rx
+        for j in axes(ϕ,1)
             x=j*dx
             x1 = x-r0
             x2 = x+r0
-            for k=ly:ry
+            for k in axes(ϕ,2)
                 y=k*dy
                 y1 = y-r0
                 y2 = y+r0
@@ -43,7 +42,7 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
                                     * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
                 dψdt[j,k,0] = ( 2amp *width *γ^2 *(x1 *(-vx) + y1 *(-vy)) 
                                 *exp(-width/(vx^2 + vy^2) * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1 *(-vy))^2 * γ^2 ))
-                            + 2amp *width *γ^2 *(x2 *(vx) + y2 *(vy)) 
+                              + 2amp *width *γ^2 *(x2 *(vx) + y2 *(vy)) 
                                 *exp(-width/(vx^2 + vy^2) * ( (x2 *(vy) - y2 *(vx))^2 + (x2* (vx) + y2 *(vy))^2 * γ^2 ))    )
             end
         end
@@ -54,14 +53,23 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
         #Get Sqrt(Omega) and its inverse matrices
         S_Ωzero, inv_S_Ωzero = omegaIC(ϕ_s,ψ_s)
 
+        #!
+        #Test 4-indexed S_Ωzero, inv_S_Ωzero
+        S_Ωzero_f = mapZTo4Index(S_Ωzero)
+        inv_S_Ωzero_f =mapZTo4Index(inv_S_Ωzero)
+        #!
+
+        # #Z (ρ) i.c.
+        # for J=1:N^2
+        #     for K=1:N^2
+        #         Z[J,K,1]=-im/sqrt(2) * inv_S_Ωzero[J,K]
+        #         dZdt[J,K,1] = 1/sqrt(2) * S_Ωzero[J,K]
+        #     end
+        # end
+
         #Z (ρ) i.c.
-        for J=1:N^2
-            for K=1:N^2
-                Z[J,K,1]=-im/sqrt(2) * inv_S_Ωzero[J,K]
-                dZdt[J,K,1] = 1/sqrt(2) * S_Ωzero[J,K]
-            end
-        end
-end
+        @views Z[:,:,:,:,0] .= -im/sqrt(2) .* inv_S_Ωzero_f
+        @views dZdt[:,:,:,:,0].= 1/sqrt(2) .* S_Ωzero_f
 end
 #------------------------------------------------------------------------------------------------#
 
@@ -146,7 +154,7 @@ function omegaIC(ϕ_s,ψ_s)
     end
 
     ###################--CHOOSE ONE OF THEM--###########################
-    # Taking sqrt of matrix Ω (version 1) #!--->This looks faster for N=3 test (but for N=60,70 got slower and uses more ram)
+    # # Taking sqrt of matrix Ω (version 1) #!--->This looks faster for N=3 test (but for N=60,70 got slower and uses more ram)
     # eigenValues=eigvals(Ω)
     # similarityMatrix = eigvecs(Ω)
     # diag_S_Ωzero=zeros(1:N^2,1:N^2)

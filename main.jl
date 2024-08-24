@@ -32,11 +32,17 @@ using PProf
 #Standards:  ϕ and ψ are in 2D lattice // Z is flattened 1D N^2 lattice (for now)
 ϕ = im*zeros(Nx,Ny,2)
 ψ = zeros(Nx,Ny,2)
-Z = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
+# Z = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
 dϕdt = im*zeros(Nx,Ny,2)
 dψdt = zeros(Nx,Ny,2)
-dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays.
+# dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays.
 
+#!
+Z = Array{ComplexF64,5}(undef, Nx,Nx,Ny,Ny,2)
+dZdt = Array{ComplexF64,5}(undef, Nx,Nx,Ny,Ny,2)
+Z = OffsetArray(Z,lx:rx,lx:rx,ly:ry,ly:ry,0:1)
+dZdt = OffsetArray(dZdt,lx:rx,lx:rx,ly:ry,ly:ry,0:1)
+#!
 #-Offset arrays for the symmetric lattice coordinates (for more natural physical indexing)
 ϕ = OffsetArray(ϕ,lx:rx,ly:ry,0:1)
 ψ = OffsetArray(ψ,lx:rx,ly:ry,0:1)
@@ -67,11 +73,28 @@ ioψ=open("data/initial_psi.dat","w")
 
 
 #----Initial Conditions----#
-initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+@time initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+# initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
 
 #Record initial conditions
 writedlm(ioϕ,ϕ[:,:,0])
 writedlm(ioψ,ψ[:,:,0])
+
+#!
+@views Z_t = mapZTo2Index(Z[:,:,:,:,0])
+@views dZdt_t = mapZTo2Index(dZdt[:,:,:,:,0])
+@views constraints_checker(Z_t[:,:,1],dZdt_t[:,:,1])
+@views conserved_checker(Z_t[:,:,1],dZdt_t[:,:,1])
+#----Renormalization----#
+meanSqrRenorm = renormalization(Z_t)
+zPE = zeroPointEnergy(Z_t,dZdt_t)
+
+#----Initial Energy----#
+totalE, ZED = energy(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t,meanSqrRenorm,zPE)
+ZED_t = ravelDimension(ZED) #!unnecessary temp array.
+ZedIO = open("data/energies/ZED.dat","w")
+writedlm(ZedIO,ZED_t)
+#!
 
 #!
 # #Check constraints and conserved quantities
@@ -93,9 +116,9 @@ writedlm(ioψ,ψ[:,:,0])
 
 
 
-#Close data files
-close(ioϕ)
-close(ioψ)
+# #Close data files
+# close(ioϕ)
+# close(ioψ)
 
 # end 
 #END OF CODE

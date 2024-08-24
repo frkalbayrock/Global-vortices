@@ -71,7 +71,16 @@ export mapZTo4Index
 #where 'j' and 'k' are for space coordinates and 'l' and 'm' are the auxillary indices for CQC.
 function mapZTo4Index(ZordZ)
 
-    ZordZ_t = im*zeros(Nx,Nx,Ny,Ny) #t stands for "two-index" for each given index (i.e. j,k <- J)
+    #!
+    if eltype(ZordZ) == Float64
+            ZordZ_t = Array{Float64,4}(undef, Nx,Nx,Ny,Ny)    #"s" stands for single
+        elseif eltype(ZordZ) == ComplexF64
+            ZordZ_t = Array{ComplexF64,4}(undef, Nx,Nx,Ny,Ny)
+        else
+            println("Error: given type not float or complex float.")
+    end
+    #!
+    # ZordZ_t = im*zeros(Nx,Nx,Ny,Ny) #t stands for "two-index" for each given index (i.e. j,k <- J)#!
     ZordZ_t = OffsetArray(ZordZ_t,lx:rx,lx:rx,ly:ry,ly:ry)
 
     for J=1:N^2
