@@ -81,12 +81,18 @@ function mapZTo4Index(ZordZ)
     end
     #!
     # ZordZ_t = im*zeros(Nx,Nx,Ny,Ny) #t stands for "two-index" for each given index (i.e. j,k <- J)#!
-    ZordZ_t = OffsetArray(ZordZ_t,lx:rx,lx:rx,ly:ry,ly:ry)
+    # ZordZ_t = OffsetArray(ZordZ_t,lx:rx,lx:rx,ly:ry,ly:ry)#! ***** turn this on when you remove the bottom red warning.
 
     for J=1:N^2
         for K=1:N^2
             j,k = oneIndexToTwo(J)
             l,m = oneIndexToTwo(K)
+            #! REMOVE THIS ONCE WE ARE DONE USING 4-INDEX OMEGA'S also make sure you turn on **** above
+            j= Int(j+Nx/2)
+            k= Int(k+Ny/2)
+            l= Int(l+Nx/2)
+            m= Int(m+Ny/2)
+            #! 
             ZordZ_t[j,l,k,m] = ZordZ[J,K]
         end
     end

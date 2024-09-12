@@ -1,6 +1,8 @@
 module Parameters
 export dx,dy,dt,N,Nx,Ny,lx,rx,ly,ry,nt,nsnaps
 export λ,α,β,η,m_ρ,m_ϕ,m_ψ
+export nprocs_perdim,Nx_loc,Ny_loc,padding_size,padd
+export lx_l,rx_l,ly_l,ry_l 
 
 #--Lattice Parameters
 const N=20
@@ -28,30 +30,20 @@ const m_ψ=1
 #--Data Recorder
 const nsnaps=200
 
-# #--Lattice Parameters
-# N=20
-# Nx=N
-# Ny=N
-# lx=Int16.(-Nx/2+1)
-# rx=Int16.(Nx/2)
-# ly=lx
-# ry=rx
-# dx=0.4
-# dy=dx
-# dt=dx/50.0
-# nt=1000
-# #!maybe add L_x and L_y later (if needed)
+#--Parallel
+const ndims = 2
+const nprocs_perdim = [2 2]
+#Physical sizes of chunks
+const Nx_loc = Int(Nx/nprocs_perdim[1])
+const Ny_loc = Int(Ny/nprocs_perdim[2])
+#Padding to be added on top of the physical sizes
+const padding_size = 2 #depends on the order of derivatives
+const padd = Int(padding_size/2) #padding_perside
+#Physically useful ends of local padded arrays
+const lx_l = padd + 1
+const rx_l = padd + Nx_loc
+const ly_l = padd + 1
+const ry_l = padd + Ny_loc
 
-# #--Couplings and Masses #!TO BE FINE_TUNED
-# λ=1
-# α=1
-# β=1
-# η=1
-# m_ρ=1
-# m_ϕ=sqrt(λ*η^2)
-# m_ψ=1
-
-# #--Data Recorder
-# nsnaps=200
 
 end #module

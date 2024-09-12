@@ -1,5 +1,52 @@
 # CHANGELOG
 
+#### v0.3.1
+Parallelization is completed. The energy graphs for parallel vs serial code matches exactly.
+Only the -4-index Z/2-index ϕ,ψ- notation is used throughout for ease of use of parallelization. 
+This might be updated to use the -2-index Z/1-index ϕ,ψ- notation for performance purposes later. 
+
+All the changes listed:
+Auxiliary.jl:
+- Energy routine is removed from this file. 
+- For parallelization all the global to local mappings and transfer of data routines are added.
+    - chunker(): finding the (end) coordinates of arrays of local chunks in the global lattice based on their proc id.
+    - chunk_cart(): gives the cartesian coordinate of a local chunk based on proc id in the domain decomposition.
+    - find_neighbours(): finding the neighbouring chunks in the global domain.
+    - chunk_id(): gives the proc id based on the cartesian coordinate of the chunk in the domain; opposite of chunk_cart().
+    - update_Paddings(): update the paddings of the local arrays that share boundary information with neighbours. 
+    - getData_ϕ,_ψ,_Z(): collects the requested data from a given neighbour.
+Evolution.jl:
+- Move a time-step part is updated to be used on the workers. update_Paddings() added after the first half-step!() for derivatives in the next step.
+- Synchronization is optimized using the master-worker topology. Need to sync everything before update_Paddings() for correct padding updates 
+    and also update_Paddings() is synched across workers thus the derivatives are taken once the transfer is over.
+- Take a snap part now has a step to collect the field information from the workers (local ϕ,ψ) to master (global ϕ,ψ) for recording.
+IC.jl:
+- Complete overhaul: ϕ,ψ are now first set in another function sent to all workers thus they are locally defined to begin with.
+    ϕ,ψ are then collected to their global field arrays for Ω matrix calculations.
+- Global Z's are defined using CQC initial conditions as normal for now. Then they are sent to local chunks.
+    - This could be avoided if one can write the initial conditions locally directly. (will be updated in a later version)
+        Even with this update Ω matrices will have to be defined on the master globally for matrix operations -but at least removing Z_gl will improve memory overall.
+- Renormalization and zero-point energy calculations are now done at the worker that has the corner point (xmax,ymax).
+IndexMap.jl:
+- mapZto4Index() is under renovation. This is updated to accomodate 4-index Ω matrices This cannot correctly map (offsets and everything) Z to 4-index anymore.
+Parameters.jl
+- Parameters necessary for parallelization are added.
+main.jl
+- Global and local arrays are defined on the corresponding procs. 
+- For now everything uses 4-index Z/2-index ϕ,ψ notation.
+- Definitions of functions have been changed. We no longer need to send in the arrays (mostly).
+- Whole main body is defined in a function called run_ev() to avoid defining global (in the julia memory sense) variables.
+
+Newly added modules
+- Energy.jl:
+    - This is moved from the Auxiliary.jl to here with an additional function.
+    - Total energy is now calculated at local chunks and summed over later when needed on the master.
+    - ZED is also locally determined and combined into a global ZED when requested.
+
+Next stage:
+- Memory and ease of use optimizations
+- Finding defects with winding number calculations
+- Possibly re-parallelize with the single index notation for better perfomance (need some speed testing first)
 
 #### v0.2
 Serial code is completed up to finding strings routine.

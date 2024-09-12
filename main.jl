@@ -2,125 +2,140 @@
 
 include("Parameters.jl")
 using .Parameters
+using Distributed
+addprocs(prod(nprocs_perdim),topology=:all_to_all,lazy=true)
+
 include("IC.jl")
-using .IC
+include("Energy.jl")
 include("Auxiliary.jl")
-using .Auxiliary_Routines
-# include("energy.jl")
-# using .energy
 include("IndexMap.jl")
-using .IndexMap
 include("Evolution.jl")
-using .Time_Evolution
 include("Constraints.jl")
+using .IC
+using .Energy
+using .Auxiliary_Routines
+using .IndexMap
+using .Time_Evolution
 using .Constraints_Conserveds
 using OffsetArrays
 using DelimitedFiles
 using Plots; pythonplot()
 using Printf
-
-#!
-using BenchmarkTools
-using Profile
-using PProf
-
-
-# @time begin
+# !
+# using BenchmarkTools
+# using Profile
+# using PProf
 
 
-#--Initilize the Field Arrays and
-#Standards:  ϕ and ψ are in 2D lattice // Z is flattened 1D N^2 lattice (for now)
-ϕ = im*zeros(Nx,Ny,2)
-ψ = zeros(Nx,Ny,2)
-# Z = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
-dϕdt = im*zeros(Nx,Ny,2)
-dψdt = zeros(Nx,Ny,2)
-# dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays.
 
-#!
-Z = Array{ComplexF64,5}(undef, Nx,Nx,Ny,Ny,2)
-dZdt = Array{ComplexF64,5}(undef, Nx,Nx,Ny,Ny,2)
-Z = OffsetArray(Z,lx:rx,lx:rx,ly:ry,ly:ry,0:1)
-dZdt = OffsetArray(dZdt,lx:rx,lx:rx,ly:ry,ly:ry,0:1)
-#!
-#-Offset arrays for the symmetric lattice coordinates (for more natural physical indexing)
-ϕ = OffsetArray(ϕ,lx:rx,ly:ry,0:1)
-ψ = OffsetArray(ψ,lx:rx,ly:ry,0:1)
-dϕdt = OffsetArray(dϕdt,lx:rx,ly:ry,0:1)
-dψdt = OffsetArray(dψdt,lx:rx,ly:ry,0:1)
-
-
-#--Information about the run
-open("data/info.dat","w") do io
-    #--Write Info For Graphs--!
-    write(io,N,"x",N,"\n")  #number of lattice points
-    writedlm(io,dx)         #lattice spacing
-    writedlm(io,dt)         #time spacing
-    writedlm(io,nt)         #number of time steps
-    writedlm(io,nsnaps)     #number of snapshots
+@everywhere workers() begin
+    include("Parameters.jl")
+    include("IC.jl")
+    include("Energy.jl")
+    include("Auxiliary.jl")
+    include("IndexMap.jl")
+    include("Evolution.jl")
+    include("Constraints.jl")
+    using .Parameters
+    using .IC
+    using .Energy
+    using .Auxiliary_Routines
+    using .IndexMap
+    using .Time_Evolution
+    using .Constraints_Conserveds
 end
-#Info
-println("Number of lattice points: ",Nx," x ",Ny)
-println("Size L of lattice in x-direction: ", Nx*dx )
-println("Lattice Spacing dx and dy :",dx)
-println("Time Spacing dt: ",dt)
-println("Number of time steps: ",nt)
-println("Threads: ",Threads.nthreads())#!
-#Data files
-ioϕ=open("data/initial_phi.dat","w")
-ioψ=open("data/initial_psi.dat","w")
+
+function run_ev()
+    #--Initilize the Chunk Field Arrays and
+    #Standards:  ϕ and ψ are in 2D lattice // Z can be on the flattened 1D N^2 lattice or native 2D lattice
+    ϕ_gl =    im*zeros(Nx, Ny, 2)
+    ψ_gl =       zeros(Nx, Ny, 2)
+    ϕ_gl = OffsetArray(ϕ_gl,lx:rx,ly:ry,0:1)
+    ψ_gl = OffsetArray(ψ_gl,lx:rx,ly:ry,0:1)
+    # #2-index Z
+    # # Z_gl =    Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #!WE PROBABLY DONT NEED TO DEFINE THESE HERE 
+    # # dZdt_gl = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #!NO, Z would be a problem. MAYBE NOT.......
+    #4-index Z
+    Z_gl =    Array{ComplexF64,5}(undef, Nx, Nx, Ny, Ny, 2)
+    dZdt_gl = Array{ComplexF64,5}(undef, Nx, Nx, Ny, Ny, 2)
+
+    #Define the field on chunks
+    @sync @everywhere workers() begin 
+        ϕ =    im*zeros(Nx_loc+padding_size, Ny_loc+padding_size, 2)
+        ψ =       zeros(Nx_loc+padding_size, Ny_loc+padding_size, 2)
+        dϕdt = im*zeros(Nx_loc+padding_size, Ny_loc+padding_size, 2) #!it looks like these don't need the padding.
+        dψdt =    zeros(Nx_loc+padding_size, Ny_loc+padding_size, 2) #!but easier for "for" loops when ϕ and dϕdt are in the same one
+        #2-index Z
+        # Z =    Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
+        # dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2)
+        #4-index Z
+        Z =    Array{ComplexF64,5}(undef, Nx_loc+padding_size, Nx, Ny_loc+padding_size, Ny, 2)
+        dZdt = Array{ComplexF64,5}(undef, Nx_loc+padding_size, Nx, Ny_loc+padding_size, Ny, 2)
+    end
+
+
+    #--Information about the run
+    open("data/info.dat","w") do io
+        #--Write Info For Graphs--!
+        write(io,N,"x",N,"\n")  #number of lattice points
+        writedlm(io,dx)         #lattice spacing
+        writedlm(io,dt)         #time spacing
+        writedlm(io,nt)         #number of time steps
+        writedlm(io,nsnaps)     #number of snapshots
+    end
+    #Info
+    println("Number of lattice points: ",Nx," x ",Ny)
+    println("Size L of lattice in x-direction: ", Nx*dx )
+    println("Lattice Spacing dx and dy :",dx)
+    println("Time Spacing dt: ",dt)
+    println("Number of time steps: ",nt)
+    println("Threads: ",Threads.nthreads())#!
+    println("Procs: ",nprocs())
+    #Data files
+    ioϕ=open("data/initial_phi.dat","w")
+    ioψ=open("data/initial_psi.dat","w")
 
 
 
-#----Initial Conditions----#
-@time initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
-# initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+    #----Initial Conditions----#
+    @time initialConditions!(ϕ_gl,ψ_gl,Z_gl,dZdt_gl)
 
-#Record initial conditions
-writedlm(ioϕ,ϕ[:,:,0])
-writedlm(ioψ,ψ[:,:,0])
+    #Record initial conditions
+    writedlm(ioϕ,ϕ_gl[:,:,0])
+    writedlm(ioψ,ψ_gl[:,:,0])
 
-#!
-@views Z_t = mapZTo2Index(Z[:,:,:,:,0])
-@views dZdt_t = mapZTo2Index(dZdt[:,:,:,:,0])
-@views constraints_checker(Z_t[:,:,1],dZdt_t[:,:,1])
-@views conserved_checker(Z_t[:,:,1],dZdt_t[:,:,1])
-#----Renormalization----#
-meanSqrRenorm = renormalization(Z_t)
-zPE = zeroPointEnergy(Z_t,dZdt_t)
 
-#----Initial Energy----#
-totalE, ZED = energy(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t,meanSqrRenorm,zPE)
-ZED_t = ravelDimension(ZED) #!unnecessary temp array.
-ZedIO = open("data/energies/ZED.dat","w")
-writedlm(ZedIO,ZED_t)
-#!
+    # #!Turn on if you wanna check constraints - skipping for now
+    # @views Z_t = mapZTo2Index(Z_gl[:,:,:,:,0])
+    # @views dZdt_t = mapZTo2Index(dZdt_gl[:,:,:,:,0])
+    # @views constraints_checker(Z_t[:,:,1],dZdt_t[:,:,1])
+    # @views conserved_checker(Z_t[:,:,1],dZdt_t[:,:,1])
 
-#!
-# #Check constraints and conserved quantities
-# @views constraints_checker(Z[:,:,1],dZdt[:,:,1])
-# @views conserved_checker(Z[:,:,1],dZdt[:,:,1])
 
-# #----Renormalization----#
-# meanSqrRenorm = renormalization(Z)
-# zPE = zeroPointEnergy(Z,dZdt)
+    #----Renormalization----#
+    meanSqrRenorm = renormalization()
+    zPE = zeroPointEnergy()
 
-# #----Initial Energy----#
-# totalE, ZED = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
 
-# #----Time Evolution----#
-# @time time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
-# @time Profile.Allocs.@profile sample_rate=0.01 time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
+    #----Initial Energy----#
+    totalE, ZED = energy(meanSqrRenorm,zPE)
+    ZedIO = open("data/energies/ZED.dat","w")
+    writedlm(ZedIO,ZED)
+    println("Total initial energy: ",totalE)
+
+
+    #----Time Evolution----#
+    @time time_evolve!(ϕ_gl,ψ_gl,meanSqrRenorm,zPE,Z_gl,dZdt_gl)#!
 
 
 
+    #Close data files
+    close(ioϕ)
+    close(ioψ)
 
-
-# #Close data files
-# close(ioϕ)
-# close(ioψ)
-
-# end 
+end 
+@time run_ev()
+rmprocs(workers())
 #END OF CODE
 
 

@@ -1,10 +1,12 @@
 module Auxiliary_Routines 
 
+using Distributed
 include("Parameters.jl")
 using .Parameters
 include("IndexMap.jl")
 using .IndexMap
 using OffsetArrays
+
 
 #This routine applies the periodic boundary conditions on 2-D lattice
 #It takes the lattice point (j,k) and determines nnl (nearest neighbour left) and nnr (nearest neighbour right) on each direction.
@@ -72,164 +74,152 @@ function pbc1D(J)
     return nnl_x, nnr_x, nnl_y, nnr_y
 end
 
+
+export chunker
+function chunker(proc_id)
+    
+    #Cartesian coordinate of the chunk
+    i_procs, j_procs = chunk_cart(proc_id::Int)
+
+    #Global coordinates of the ends of the chunks 
+    lx_loc = Int((Nx_loc * i_procs - (Nx/2-1)))
+    rx_loc = Int(lx_loc + Nx_loc - 1)
+    ly_loc = Int((Ny_loc * j_procs - (Ny/2-1)))
+    ry_loc = Int(ly_loc + Ny_loc - 1)
+
+return lx_loc, rx_loc, ly_loc, ry_loc
+end
+
+
+#Gives the Cartesian coordinate of the chunk
+function chunk_cart(proc_id::Int)
+    i_procs = Int(mod((proc_id-2),nprocs_perdim[1]))
+    j_procs = Int((proc_id-2 - i_procs)/nprocs_perdim[1])
+
+return i_procs, j_procs
+end
+
+
+export find_neighbours
+function find_neighbours(proc_id)
+    
+    #Get Cartesian coordinate of the chunk first
+    i_procs, j_procs = chunk_cart(proc_id)
+    nnl, nnr, nnb, nnt = chunk_pbc(i_procs,j_procs) #nearest neighbours l:left, r:right, b:bottom, t:top
+
+    #Neighbours
+    n_left =   chunk_id(nnl, j_procs)
+    n_right =  chunk_id(nnr, j_procs)
+    n_bottom = chunk_id(i_procs, nnb)
+    n_top =    chunk_id(i_procs, nnt)
+
+return n_left, n_right, n_bottom, n_top
+end
+
+
+#Gets the Cartesian coordinate of the chunk and gives back proc_id
+function chunk_id(i_procs::Int,j_procs::Int)
+    proc_id = j_procs * nprocs_perdim[1] + i_procs + 2
+return proc_id
+end
+
+
+#Periodic boundary conditions on the chunks
+#Gets the Cartesian coord of the chunk &
+#returns neighbouring coordinates along x and y directions
+function chunk_pbc(i,j)
+
+    #x-direction
+    nnl = i-1
+    nnr = i+1
+    nnl < 0 ? nnl=nprocs_perdim[1]-1 : nothing
+    nnr > nprocs_perdim[1]-1 ? nnr=0 : nothing
+    
+    #y-direction
+    nnb = j-1
+    nnt = j+1
+    nnb < 0 ? nnb=nprocs_perdim[2]-1 : nothing
+    nnt > nprocs_perdim[2]-1 ? nnt=0 : nothing
+
+return nnl, nnr, nnb, nnt
+end
+
+
+#---Transfer Functions
+#   So far this is the only way it works with @fetchfrom that's why it is done not so clever way, on purpose.
+
+#Data exchange initiator to fill paddings with updated data from neighboring blocks
+@everywhere workers() function update_Paddings(t)
+    # println("update_Paddings Started")
+    # flush(stdout)
+        #Find neighbors
+        n_left, n_right, n_bottom, n_top = find_neighbours(myid())
+        #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
+        ψ[1:padd, padd+1:Ny_loc+padd, t]            .= @fetchfrom n_left   getData_ψ(1,t)
+        ψ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd, t] .= @fetchfrom n_right  getData_ψ(2,t)
+        ψ[padd+1:Nx_loc+padd, 1:padd, t]            .= @fetchfrom n_bottom getData_ψ(3,t)
+        ψ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end, t] .= @fetchfrom n_top    getData_ψ(4,t)
+
+        ϕ[1:padd, padd+1:Ny_loc+padd, t]            .= @fetchfrom n_left   getData_ϕ(1,t)
+        ϕ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd, t] .= @fetchfrom n_right  getData_ϕ(2,t)
+        ϕ[padd+1:Nx_loc+padd, 1:padd, t]            .= @fetchfrom n_bottom getData_ϕ(3,t)
+        ϕ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end, t] .= @fetchfrom n_top    getData_ϕ(4,t)
+
+        Z[1:padd, :, padd+1:Ny_loc+padd, :, t]            .= @fetchfrom n_left   getData_Z(1,t)
+        Z[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :, t] .= @fetchfrom n_right  getData_Z(2,t)
+        Z[padd+1:Nx_loc+padd, :, 1:padd, :, t]            .= @fetchfrom n_bottom getData_Z(3,t)
+        Z[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :, t] .= @fetchfrom n_top    getData_Z(4,t)
+    # println("update_Paddings ended")
+    # flush(stdout)
+end
+
+# @everywhere workers() 
+# export getData_ψ
+@everywhere workers() function getData_ψ(neighbour,t) #! for now i have to define them like this for name space issues, 
+                                                    #! also needed "using Distributed" in this module
+                                                    #!I wanna make Auxiliary not a module eventually.
+    #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
+    if neighbour == 1
+        return ψ[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd, t]
+    elseif neighbour == 2
+        return ψ[padd+1:2*padd, padd+1:Ny_loc+padd, t]
+    elseif neighbour == 3
+        return  ψ[padd+1:Nx_loc+padd, Ny_loc+padd:end-padd, t]
+    elseif neighbour == 4
+        return ψ[padd+1:Nx_loc+padd, padd+1:2*padd, t]
+    end
+end
+
+# @everywhere workers() 
+# export getData_ϕ
+@everywhere workers() function getData_ϕ(neighbour,t)
+    #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
+    if neighbour == 1
+        return ϕ[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd, t]
+    elseif neighbour == 2
+        return ϕ[padd+1:2*padd, padd+1:Ny_loc+padd, t]
+    elseif neighbour == 3
+        return ϕ[padd+1:Nx_loc+padd, Ny_loc+padd:end-padd, t]
+    elseif neighbour == 4
+        return ϕ[padd+1:Nx_loc+padd, padd+1:2*padd, t]
+    end
+end
+
+# @everywhere workers() 
+# export getData_Z
+@everywhere workers() function getData_Z(neighbour,t)
+    #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
+    if neighbour == 1
+        return Z[Nx_loc+padd:end-padd, :, padd+1:Ny_loc+padd, :, t]
+    elseif neighbour == 2
+        return Z[padd+1:2*padd, :, padd+1:Ny_loc+padd, :, t]
+    elseif neighbour == 3
+        return Z[padd+1:Nx_loc+padd, :, Ny_loc+padd:end-padd, :, t]
+    elseif neighbour == 4
+        return Z[padd+1:Nx_loc+padd, :, padd+1:2*padd, :, t]
+    end
+end
+
 #
-export energy
-function energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
 
-    #---Using Single-Index Notation---#   
-        #2-index to 1-index mapping
-        ϕ_s = @views flattenDimension(ϕ[:,:,0])
-        ψ_s = @views flattenDimension(ψ[:,:,0])
-        dϕdt_s = @views flattenDimension(dϕdt[:,:,0])
-        dψdt_s = @views flattenDimension(dψdt[:,:,0])
-
-        #Classical fields densities
-        kEϕψ = 0.
-        gEϕψ = 0.
-        pEϕψ = 0.
-        classicalE = 0.
-        #Quantum field density
-        quantumEZ = 0.
-        #Total energy density (classical+quantum)
-        sumE = 0.
-        #Total Energies
-        totalE = 0.
-
-        #!
-        ZED = zeros(1:N^2)
-        # Edensity = zeros(N^2)
-
-        #Integrate over all space
-        for J=1:N^2
-            #Get the neighbours with pbc
-            nnl_x, nnr_x, nnl_y, nnr_y = pbc1D(J)
-
-            #Kinetic(kE), gradient(gE) and potential(pE) energy densities
-            kEϕψ = abs2(dϕdt_s[J]) + (dψdt_s[J])^2/2
-            gEϕψfwd = ( ( ( (ψ_s[nnr_x] - ψ_s[J])/dx )^2  + ( (ψ_s[nnr_y] - ψ_s[J])/dy )^2 )/2
-                        + ( abs2( (ϕ_s[nnr_x] - ϕ_s[J])/dx ) + abs2( (ϕ_s[nnr_y] - ϕ_s[J])/dy ) ) )
-            gEϕψbkd = ( ( ( (ψ_s[J] - ψ_s[nnl_x])/dx )^2  + ( (ψ_s[J] - ψ_s[nnl_y])/dy )^2 )/2
-                        + ( abs2( (ϕ_s[J] - ϕ_s[nnl_x])/dx ) + abs2( (ϕ_s[J] - ϕ_s[nnl_y])/dy ) ) )
-            gEϕψ = (gEϕψfwd + gEϕψbkd)/2
-            pEϕψ = -m_ϕ^2*abs2(ϕ_s[J]) + m_ψ^2*ψ_s[J]^2/2 + λ*abs2(ϕ_s[J])^2/2 #+ λ*eta^4/4
-            #Total classical energy density
-            classicalE = kEϕψ + gEϕψ + pEϕψ
-
-            #Energy densities of Z
-            kEZ = 0.
-            gEZ = gEZfwd = gEZbkd = 0.
-            pEZ = 0.
-            intEZ = 0.
-            for K=1:N^2
-                kEZ = kEZ + ( abs2(dZdt[J,K,1]) )/2
-                gEZfwd = ( abs2((Z[nnr_x,K,1] - Z[J,K,1])/dx)  
-                         + abs2((Z[nnr_y,K,1] - Z[J,K,1])/dy) )/2
-                gEZbkd = ( abs2((Z[J,K,1] - Z[nnl_x,K,1])/dx)  
-                         + abs2((Z[J,K,1] - Z[nnl_y,K,1])/dy) )/2
-                gEZ = gEZ + (gEZbkd + gEZfwd)/2
-                pEZ = pEZ + m_ρ^2* abs2(Z[J,K,1])/2
-                intEZ = intEZ + ( α*abs2(ϕ_s[J]) + β*ψ_s[J]^2 ) * ( abs2(Z[J,K,1]) )/2
-            end
-
-            #-Renormalization 
-            intEZ = intEZ - (α*abs2(ϕ_s[J]) + β*ψ_s[J]^2)*meanSqrRenorm/2
-            #Total energy density of Z including the interactions
-            quantumEZ = (kEZ + gEZ + pEZ + intEZ)/(dx*dy)
-
-            #Zero-Point Energy
-            quantumEZ = quantumEZ - zPE
-
-            #-Total energy density
-            sumE =  classicalE + quantumEZ
-
-            #-Total energy integral
-            totalE = totalE + dx*dy*sumE
-
-            #!Change later
-            ZED[J] = quantumEZ
-            # Edensity[J] = classicalE
-        end
-
-        #!Change later
-        # return ZED
-        return totalE,ZED#, Edensity
-
-
-    #---Using Two-Index Notation---#
-        # # Z_t , dZdt_t = mapZTo4Index(Z[:,:,1],dZdt[:,:,1]) #!This needs an update since the definition of the function changed.
-        # #Classical fields densities
-        # kEϕψ = 0.
-        # gEϕψ = 0.
-        # pEϕψ = 0.
-        # classicalE = 0.
-        # #Quantum field density
-        # quantumEZ = 0.
-        # #Total energy density (classical+quantum)
-        # sumE = 0.
-        # #Total Energies
-        # totalE = 0.
-
-
-
-        # #!
-        # ZED = zeros(Nx,Ny)
-        # ZED = OffsetArray(ZED,lx:rx,ly:ry)
-
-        # #Integrate over all space
-        # for j=lx:rx
-        #     for k=ly:ry
-        #         #Get neighbours with pbc
-        #         nnl_x, nnr_x, nnl_y, nnr_y = pbc2D(j,k)
-
-        #         #Kinetic, gradient, potential energy densities
-        #         kEϕψ = abs2(dϕdt[j,k,0]) + (dψdt[j,k,0])^2/2
-        #         gEϕψ = ( ( ( (ψ[nnr_x,k,0] - ψ[j,k,0])/dx )^2  + ( (ψ[j,nnr_y,0] - ψ[j,k,0])/dy )^2 )/2
-        #                 + ( abs2( (ϕ[nnr_x,k,0] - ϕ[j,k,0])/dx ) + abs2( (ϕ[j,nnr_y,0] - ϕ[j,k,0])/dy ) ) )
-        #         pEϕψ = -m_ϕ^2*abs2(ϕ[j,k,0]) + m_ψ^2*ψ[j,k,0]^2/2 + λ*abs2(ϕ[j,k,0])^2/2 #+ λ*eta^4/4
-        #         #Total classical energy density
-        #         classicalE = kEϕψ + gEϕψ + pEϕψ
-
-        #         #Energy densities of Z
-        #         kEZ = 0.
-        #         gEZ = gEZfwd = gEZbkd = 0.
-        #         pEZ = 0.
-        #         intEZ = 0.
-
-        #         for l=lx:rx
-        #             for m=ly:ry
-        #                 kEZ = kEZ + ( abs2(dZdt[j,l,k,m,0]) )/2
-        #                 gEZfwd = ( abs2((Z[nnr_x,l,k,m,0] - Z[j,l,k,m,0])/dx)  
-        #                             + abs2((Z[j,l,nnr_y,m,0] - Z[j,l,k,m,0])/dy) )/2
-        #                 gEZbkd = ( abs2((Z[j,l,k,m,0] - Z[nnl_x,l,k,m,0])/dx)  
-        #                             + abs2((Z[j,l,k,m,0] - Z[j,l,nnl_y,m,0])/dy) )/2
-        #                 gEZ = gEZ + (gEZbkd + gEZfwd)/2
-        #                 pEZ = pEZ + m_ρ^2* abs2(Z[j,l,k,m,0])/2
-        #                 intEZ = intEZ + ( α*abs2(ϕ[j,k,0]) + β*ψ[j,k,0]^2 ) * ( abs2(Z[j,l,k,m,0]) )/2
-        #             end
-        #         end
-            
-        #         #Renormalization
-        #         intEZ = intEZ - ( α*abs2(ϕ[j,k,0]) + β*ψ[j,k,0]^2 )*meanSqrRenorm/2
-        #         #Total energy density of Z including the interactions
-        #         quantumEZ = (kEZ + gEZ + pEZ + intEZ)/(dx*dy)
-
-        #         #Zero-Point Energy
-        #         quantumEZ = quantumEZ - zPE
-
-        #         #Total energy density
-        #         sumE = classicalE + quantumEZ
-
-        #         #Total energy
-        #         totalE = totalE + dx*dy*sumE
-
-        #         #!Change later
-        #         ZED[j,k] = quantumEZ
-        #     end
-        # end
-
-        # #!Change later
-        # return totalE,ZED
-
-end
-
-end
+end #module
