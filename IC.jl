@@ -53,23 +53,27 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
         #Get Sqrt(Omega) and its inverse matrices
         S_Ωzero, inv_S_Ωzero = omegaIC(ϕ_s,ψ_s)
 
-        #!
-        #Test 4-indexed S_Ωzero, inv_S_Ωzero
-        S_Ωzero_f = mapZTo4Index(S_Ωzero)
-        inv_S_Ωzero_f =mapZTo4Index(inv_S_Ωzero)
-        #!
-
-        # #Z (ρ) i.c.
-        # for J=1:N^2
-        #     for K=1:N^2
-        #         Z[J,K,1]=-im/sqrt(2) * inv_S_Ωzero[J,K]
-        #         dZdt[J,K,1] = 1/sqrt(2) * S_Ωzero[J,K]
-        #     end
-        # end
-
         #Z (ρ) i.c.
-        @views Z[:,:,:,:,0] .= -im/sqrt(2) .* inv_S_Ωzero_f
-        @views dZdt[:,:,:,:,0].= 1/sqrt(2) .* S_Ωzero_f
+        for J=1:N^2
+            for K=1:N^2
+                Z[J,K,1]=-im/sqrt(2) * inv_S_Ωzero[J,K]
+                dZdt[J,K,1] = 1/sqrt(2) * S_Ωzero[J,K]
+            end
+        end
+
+        #4-index notation (for omega as well)
+        # #!
+        # #Test 4-indexed S_Ωzero, inv_S_Ωzero
+        # S_Ωzero_f = mapZTo4Index(S_Ωzero)
+        # inv_S_Ωzero_f =mapZTo4Index(inv_S_Ωzero)
+        #     #Z (ρ) i.c.
+        #     @views Z[:,:,:,:,0] .= -im/sqrt(2) .* inv_S_Ωzero_f
+        #     @views dZdt[:,:,:,:,0].= 1/sqrt(2) .* S_Ωzero_f
+        # #!
+
+
+
+
 end
 #------------------------------------------------------------------------------------------------#
 
