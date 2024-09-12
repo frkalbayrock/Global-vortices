@@ -1,5 +1,8 @@
 # CHANGELOG
 
+#### v0.3.2
+Z_gl is removed from the timeEvolution() which was put there only for constraints and conserved quantities check.
+
 #### v0.3.1
 Parallelization is completed. The energy graphs for parallel vs serial code matches exactly.
 Only the -4-index Z/2-index ϕ,ψ- notation is used throughout for ease of use of parallelization. 

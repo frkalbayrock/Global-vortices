@@ -125,7 +125,7 @@ function run_ev()
 
 
     #----Time Evolution----#
-    @time time_evolve!(ϕ_gl,ψ_gl,meanSqrRenorm,zPE,Z_gl,dZdt_gl)#!
+    @time time_evolve!(ϕ_gl,ψ_gl,meanSqrRenorm,zPE)
 
 
 

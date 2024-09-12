@@ -426,7 +426,7 @@ using JLD2
 
 # 4-index Notation (Leap-frog)
 export time_evolve!
-function time_evolve!(ϕ_gl,ψ_gl,meanSqrRenorm,zPE,Z_gl,dZdt_gl)#!
+function time_evolve!(ϕ_gl,ψ_gl,meanSqrRenorm,zPE)
 
     #Snapshotting interval
     if round(nt/nsnaps,RoundDown) == 0
@@ -447,9 +447,6 @@ function time_evolve!(ϕ_gl,ψ_gl,meanSqrRenorm,zPE,Z_gl,dZdt_gl)#!
     energyIO = open("data/energy.dat","w")
     ZedIO = open("data/energies/ZED.dat","w")
 
-#!
-Z_gl = OffsetArray(Z_gl,lx:rx,lx:rx,ly:ry,ly:ry,0:1)
-dZdt_gl = OffsetArray(dZdt_gl,lx:rx,lx:rx,ly:ry,ly:ry,0:1)
 
     for t=1:nt
         
@@ -477,12 +474,6 @@ dZdt_gl = OffsetArray(dZdt_gl,lx:rx,lx:rx,ly:ry,ly:ry,0:1)
                                                                     1+padd:padd+Ny_loc,1] 
                 ψ_gl[lx_p:rx_p,ly_p:ry_p,0] .= @fetchfrom i Main.ψ[padd+1:Nx_loc+padd,
                                                                     1+padd:padd+Ny_loc,1] 
-
-                # @show @fetchfrom i axes(Main.Z[padd+1:Nx_loc+padd,:,1+padd:padd+Ny_loc,:,1])
-                # @show axes(Z_gl[lx_p:rx_p, :, ly_p:ry_p, :, 0])
-                Z_gl[lx_p:rx_p, lx:rx, ly_p:ry_p, ly:ry, 0] .= @fetchfrom i Main.Z[padd+1:Nx_loc+padd,:,
-                                                                            1+padd:padd+Ny_loc,:,1]
-                dZdt_gl[lx_p:rx_p, lx:rx, ly_p:ry_p, ly:ry, 0] .= @fetchfrom i Main.dZdt[padd+1:Nx_loc+padd,:,1+padd:padd+Ny_loc,:,1]
             end
 
             #Record field and energy data
@@ -493,11 +484,10 @@ dZdt_gl = OffsetArray(dZdt_gl,lx:rx,lx:rx,ly:ry,ly:ry,0:1)
 
             #!
             #Check constraints
-
-            Z_gl_f = mapZTo2Index(Z_gl[:,:,:,:,0])
-            dZdt_gl_f = mapZTo2Index(dZdt_gl[:,:,:,:,0])
-            @views constraints_checker(Z_gl_f,dZdt_gl_f)
-            @views conserved_checker(Z_gl_f,dZdt_gl_f)
+            # Z_gl_f = mapZTo2Index(Z_gl[:,:,:,:,0])
+            # dZdt_gl_f = mapZTo2Index(dZdt_gl[:,:,:,:,0])
+            # @views constraints_checker(Z_gl_f,dZdt_gl_f)
+            # @views conserved_checker(Z_gl_f,dZdt_gl_f)
         end
 
 
