@@ -25,76 +25,81 @@ using Profile
 using PProf
 
 
-# @time begin
+
+function run_ev()
+
+    #--Initilize the Field Arrays and
+    #Standards:  ϕ and ψ are in 2D lattice // Z is flattened 1D N^2 lattice (for now)
+    ϕ = im*zeros(Nx,Ny,2)
+    ψ = zeros(Nx,Ny,2)
+    Z = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
+    dϕdt = im*zeros(Nx,Ny,2)
+    dψdt = zeros(Nx,Ny,2)
+    dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays.
+
+    #-Offset arrays for the symmetric lattice coordinates (for more natural physical indexing)
+    ϕ = OffsetArray(ϕ,lx:rx,ly:ry,0:1)
+    ψ = OffsetArray(ψ,lx:rx,ly:ry,0:1)
+    dϕdt = OffsetArray(dϕdt,lx:rx,ly:ry,0:1)
+    dψdt = OffsetArray(dψdt,lx:rx,ly:ry,0:1)
 
 
-#--Initilize the Field Arrays and
-#Standards:  ϕ and ψ are in 2D lattice // Z is flattened 1D N^2 lattice (for now)
-ϕ = im*zeros(Nx,Ny,2)
-ψ = zeros(Nx,Ny,2)
-Z = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
-dϕdt = im*zeros(Nx,Ny,2)
-dψdt = zeros(Nx,Ny,2)
-dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays.
+    #--Information about the run
+    open("data/info.dat","w") do io
+        #--Write Info For Graphs--!
+        write(io,N,"x",N,"\n")  #number of lattice points
+        writedlm(io,dx)         #lattice spacing
+        writedlm(io,dt)         #time spacing
+        writedlm(io,nt)         #number of time steps
+        writedlm(io,nsnaps)     #number of snapshots
+    end
+    #Info
+    println("Number of lattice points: ",Nx," x ",Ny)
+    println("Size L of lattice in x-direction: ", Nx*dx )
+    println("Lattice Spacing dx and dy :",dx)
+    println("Time Spacing dt: ",dt)
+    println("Number of time steps: ",nt)
+    println("Threads: ",Threads.nthreads())#!
+    #Data files
+    ioϕ=open("data/initial_phi.dat","w")
+    ioψ=open("data/initial_psi.dat","w")
 
-#-Offset arrays for the symmetric lattice coordinates (for more natural physical indexing)
-ϕ = OffsetArray(ϕ,lx:rx,ly:ry,0:1)
-ψ = OffsetArray(ψ,lx:rx,ly:ry,0:1)
-dϕdt = OffsetArray(dϕdt,lx:rx,ly:ry,0:1)
-dψdt = OffsetArray(dψdt,lx:rx,ly:ry,0:1)
 
 
-#--Information about the run
-open("data/info.dat","w") do io
-    #--Write Info For Graphs--!
-    write(io,N,"x",N,"\n")  #number of lattice points
-    writedlm(io,dx)         #lattice spacing
-    writedlm(io,dt)         #time spacing
-    writedlm(io,nt)         #number of time steps
-    writedlm(io,nsnaps)     #number of snapshots
+    #----Initial Conditions----#
+    initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+
+    #Record initial conditions
+    writedlm(ioϕ,ϕ[:,:,0])
+    writedlm(ioψ,ψ[:,:,0])
+
+    #!
+    # #Check constraints and conserved quantities
+    # @views constraints_checker(Z[:,:,1],dZdt[:,:,1])
+    # @views conserved_checker(Z[:,:,1],dZdt[:,:,1])
+
+    #----Renormalization----#
+    meanSqrRenorm = renormalization(Z)
+    zPE = zeroPointEnergy(Z,dZdt)
+
+    #----Initial Energy----#
+    totalE, ZED = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
+
+    #----Time Evolution----#
+    @time time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
+
+
+
+
+
+    #Close data files
+    close(ioϕ)
+    close(ioψ)
+
 end
-#Info
-println("Number of lattice points: ",Nx," x ",Ny)
-println("Size L of lattice in x-direction: ", Nx*dx )
-println("Lattice Spacing dx and dy :",dx)
-println("Time Spacing dt: ",dt)
-println("Number of time steps: ",nt)
-println("Threads: ",Threads.nthreads())#!
-#Data files
-ioϕ=open("data/initial_phi.dat","w")
-ioψ=open("data/initial_psi.dat","w")
 
+@time run_ev()
 
-
-#----Initial Conditions----#
-initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
-
-#Record initial conditions
-writedlm(ioϕ,ϕ[:,:,0])
-writedlm(ioψ,ψ[:,:,0])
-
-#!
-# #Check constraints and conserved quantities
-# @views constraints_checker(Z[:,:,1],dZdt[:,:,1])
-# @views conserved_checker(Z[:,:,1],dZdt[:,:,1])
-
-#----Renormalization----#
-meanSqrRenorm = renormalization(Z)
-zPE = zeroPointEnergy(Z,dZdt)
-
-#----Initial Energy----#
-totalE, ZED = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
-
-#----Time Evolution----#
-@time time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
-
-
-
-
-
-#Close data files
-close(ioϕ)
-close(ioψ)
 
 # end 
 #END OF CODE
