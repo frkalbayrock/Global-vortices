@@ -13,8 +13,8 @@ using .Auxiliary_Routines
 using OffsetArrays
 using Distributed
 #!
-using Profile
-using PProf
+@everywhere using Profile
+@everywhere using PProf
 @everywhere using DelimitedFiles
 
 #------------------------------------------------------------------------------------------------#
@@ -24,36 +24,40 @@ export initialConditions!
 function initialConditions!(ϕ_gl,ψ_gl,Z_gl,dZdt_gl)
 
     #---Set i.c. for ϕ and ψ locally
-    @sync @everywhere workers() ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
+    @everywhere workers() ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
 
     #---Collect ϕ and ψ to global fields for Ω calculation
     for i=2:nprocs()
         lx_p, rx_p, ly_p, ry_p = chunker(i) #_p: physical
-        ϕ_gl[lx_p:rx_p,ly_p:ry_p,0] .= @fetchfrom i Main.ϕ[padd+1:Nx_loc+padd,
+        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ϕ[padd+1:Nx_loc+padd,
                                                         1+padd:padd+Ny_loc,1] 
-        ψ_gl[lx_p:rx_p,ly_p:ry_p,0] .= @fetchfrom i Main.ψ[padd+1:Nx_loc+padd,
+        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ψ[padd+1:Nx_loc+padd,
                                                         1+padd:padd+Ny_loc,1] 
     end
 
     #---Calculate Ω
     #2-index to 1-index mapping
-    ϕ_s = @views flattenDimension(ϕ_gl[:,:,0])
-    ψ_s = @views flattenDimension(ψ_gl[:,:,0])
+    ϕ_s = @views flattenDimension(ϕ_gl[:,:])
+    ψ_s = @views flattenDimension(ψ_gl[:,:])
     #Get Sqrt(Omega) and its inverse matrices
     S_Ωzero, inv_S_Ωzero = omegaIC(ϕ_s,ψ_s)
+
+
 
     #---Set i.c. for global Z
     #4-indexed Z and Ω
     S_Ωzero_f = mapZTo4Index(S_Ωzero)
-    inv_S_Ωzero_f =mapZTo4Index(inv_S_Ωzero)
+    inv_S_Ωzero_f = mapZTo4Index(inv_S_Ωzero)
     #!This part can be done on workers since omega's are now 4-indexed
     #!Then we can skip having a global Z and dZdt
+
     #Z (ρ) i.c.   
-    Z_gl[:,:,:,:,1] .= -im/sqrt(2) .* inv_S_Ωzero_f
-    dZdt_gl[:,:,:,:,1].= 1/sqrt(2) .* S_Ωzero_f
+    Z_gl[:,:,:,:] .= -im/sqrt(2) .* inv_S_Ωzero_f
+    dZdt_gl[:,:,:,:].= 1/sqrt(2) .* S_Ωzero_f
+
 
     #---Chunk Z and send it to workers
-    @sync @everywhere workers() begin
+    @everywhere workers() begin
         lx_p, rx_p, ly_p, ry_p = chunker(myid())
         lx_p = Int(Nx/2+lx_p)
         rx_p = Int(Nx/2+rx_p)
@@ -61,11 +65,14 @@ function initialConditions!(ϕ_gl,ψ_gl,Z_gl,dZdt_gl)
         ry_p = Int(Ny/2+ry_p)
 
         Z[padd+1:Nx_loc+padd,:,
-            padd+1:Ny_loc+padd,:,1] .= ($Z_gl)[lx_p:rx_p,:,ly_p:ry_p,:,1]
+            padd+1:Ny_loc+padd,:,1] .= ($Z_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
 
-        dZdt[padd+1:Nx_loc+padd,:,
-            padd+1:Ny_loc+padd,:,1] .= ($dZdt_gl)[lx_p:rx_p,:,ly_p:ry_p,:,1]
+        # dZdt[padd+1:Nx_loc+padd,:,
+        #     padd+1:Ny_loc+padd,:,1] .= ($dZdt_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
+        dZdt[:,:,:,:,1] .= ($dZdt_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
     end
+    
+  
 
     # #!Test by collecting back what we sent and recording
     # Z_test = im*zeros(Nx,Nx,Ny,Ny)
@@ -103,17 +110,17 @@ end
         x = (lx_p+(j-padd)-1)*dx
         x1 = x-r0
         x2 = x+r0
-        for k=1+padd:padd+Ny_loc
+        for k=padd+1:Ny_loc+padd
             y = (ly_p+(k-padd)-1)*dy
             y1 = y-r0
             y2 = y+r0
             ϕ[j,k,1] = η
-            dϕdt[j,k,1] = 0
+            dϕdt[j-padd,k-padd,1] = 0
             ψ[j,k,1] = amp*(exp( -width/(vx^2 + vy^2)
                                * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )       
                           + exp( -width/(vx^2 + vy^2) 
                              * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
-            dψdt[j,k,1] = ( 2amp *width *γ^2 *(x1 *(-vx) + y1 *(-vy)) 
+            dψdt[j-padd,k-padd,1] = ( 2amp *width *γ^2 *(x1 *(-vx) + y1 *(-vy)) 
                             *exp(-width/(vx^2 + vy^2) * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1 *(-vy))^2 * γ^2 ))
                             + 2amp *width *γ^2 *(x2 *(vx) + y2 *(vy)) 
                             *exp(-width/(vx^2 + vy^2) * ( (x2 *(vy) - y2 *(vx))^2 + (x2* (vx) + y2 *(vy))^2 * γ^2 ))    )
@@ -121,9 +128,9 @@ end
     end
 end
 
-#!for now I am skipping this one
-function ic_Z()
-end
+# #!for now I am skipping this one
+# @everywhere workers() function ic_Z(Z,dZdt)
+# end
    
 #omegaIC calculates the Ω^2 matrix used in CQC calculations.
 #And it uses to return sqrt(Ω) and inverse of sqrt(Ω) matrices to be used in the initial conditions
@@ -256,22 +263,18 @@ function zeroPointEnergy()
 
     #Get the proc id of the corner of x_max,y_max
     corner_id = nprocs()
-    #Initialize partial Z's to be used for zPE calculation
-    Z_partial = im*zeros(2,Nx,2,Ny)
-    dZdt_partial = zeros(Nx,Ny)
-
     #Fetch from the corner chunk
-    Z_partial .= @fetchfrom corner_id Main.Z[rx_l-1:rx_l,:,ry_l-1:ry_l,:,1]
-    dZdt_partial .= @fetchfrom corner_id Main.dZdt[rx_l,:,ry_l,:,1]
+    Z_partial = @fetchfrom corner_id Main.Z[rx_l-1:rx_l,:,ry_l-1:ry_l,:,1]
+    dZdt_partial = @fetchfrom corner_id Main.dZdt[rx_l-padd,:,ry_l-padd,:,1]
 
     #Calculate zPE
     kEZRen = 0.
     gEZRen = 0.
     pEZRen = 0.
-    for l=Int(lx+Nx/2):Int(rx+Nx/2)
-        for m=Int(ly+Ny/2):Int(ry+Ny/2)
-            kEZRen = kEZRen + @fetchfrom corner_id ( abs2( dZdt_partial[l,m] ) )/2
-            gEZRen = gEZRen + @fetchfrom corner_id ( abs2( (Z_partial[2,l,2,m] - Z_partial[1,l,2,m])/dx ) 
+    for l=1:Nx
+        for m=1:Ny
+            kEZRen = kEZRen + ( abs2( dZdt_partial[l,m] ) )/2
+            gEZRen = gEZRen + ( abs2( (Z_partial[2,l,2,m] - Z_partial[1,l,2,m])/dx ) 
                                 + abs2( (Z_partial[2,l,2,m] - Z_partial[2,l,1,m])/dy ) )/2
             pEZRen = pEZRen + m_ρ^2*( abs2(Z_partial[2,l,2,m,1]) )/2
         end

@@ -19,177 +19,316 @@ using JLD2
 
 
 
-# export time_evolve!
-# #We use Leap-Frog: Position Verlet (LFPV) method to time evolve the system.
-# #Position: refers to fields (i.e. ψ(t)) , Velocity: refers to time derivatives (i.e. dψdt(t))
-# #LFPV first shifts the "position" to a half-integer time step with 
-# #half Euler step (integrating to t+1/2 using velocity at time t - forward finite diff.)
-# #Next, the "velocity" is leaped forward a full time step with 
-# #full Euler step using the midpoint(t+1/2) "position" calculated in the previous step.
-# #Then evolve the "position" back to an integer time-step using half-Euler now using "velocity" at the t+1 step.
-# function time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
 
-#     #Flatten ϕ, ψ, dϕdt, dψdt #!no offset for these#!
-#     ϕ_s = im*zeros(N^2,2)
-#     ψ_s = zeros(N^2,2)
-#     dϕdt_s = im*zeros(N^2,2)
-#     dψdt_s = zeros(N^2,2)
-#     ϕ_s[:,1] =  @views flattenDimension(ϕ[:,:,0])   #!for these .= uses more allocations!
-#     ψ_s[:,1] =  @views flattenDimension(ψ[:,:,0])  
-#     dϕdt_s[:,1] =  @views flattenDimension(dϕdt[:,:,0])
-#     dψdt_s[:,1] =  @views flattenDimension(dψdt[:,:,0])
+# 4-index Notation (Leap-frog)
+export time_evolve!
+function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
 
-#     #Snapshotting interval
-#     if round(nt/nsnaps,RoundDown) == 0
-#         snapInterval = 1
-#         println("---Caution: Number of time steps is smaller than snaps!---")
-#         println("Instead of ",nsnaps," snapshots, ",nt," snaps will be taken.","---")
-#     else
-#         snapInterval = round(Int,nt/nsnaps,RoundDown)
-#         if nt/nsnaps != snapInterval
-#             actualSnaps=round(Int,nt/snapInterval,RoundDown)
-#             println("---Caution: Number of snapshots are not multiple of time steps.")
-#             println("Instead of ",nsnaps," snapshots, ",actualSnaps," snaps will be taken.","---")
-#         end
-#     end
+    #Snapshotting interval
+    if round(nt/nsnaps,RoundDown) == 0
+        snapInterval = 1
+        println("---Caution: Number of time steps is smaller than snaps!---")
+        println("Instead of ",nsnaps," snapshots, ",nt," snaps will be taken.","---")
+    else
+        snapInterval = round(Int,nt/nsnaps,RoundDown)
+        if nt/nsnaps != snapInterval
+            actualSnaps=round(Int,nt/snapInterval,RoundDown)
+            println("---Caution: Number of snapshots are not multiple of time steps.")
+            println("Instead of ",nsnaps," snapshots, ",actualSnaps," snaps will be taken.","---")
+        end
+    end
 
-#     ϕdataIO = open("data/phi.dat","w") 
-#     ψdataIO = open("data/psi.dat","w")
-#     energyIO = open("data/energy.dat","w")
-#     ZedIO = open("data/energies/ZED.dat","w")
+    ϕdataIO = open("data/phi.dat","w") 
+    ψdataIO = open("data/psi.dat","w")
+    energyIO = open("data/energy.dat","w")
+    ZedIO = open("data/energies/ZED.dat","w")
 
-#     # meanRhoSqrIO = open("data/meanRhoSqr.dat","w")
-#     # ϕJLD = jldopen("data/phi.jld2","a")#!
-#     # ψJLD = jldopen("data/psi.jld2","a")#!
-#     # count=0
 
-#     for t=1:nt
+    for t=1:nt
         
-#         #Move a time step
-#         half_step!(ϕ_s,ψ_s,Z,dϕdt_s,dψdt_s,dZdt,1)
-#         leap_forward!(ϕ_s,ψ_s,Z,dϕdt_s,dψdt_s,dZdt,meanSqrRenorm)
-#         half_step!(ϕ_s,ψ_s,Z,dϕdt_s,dψdt_s,dZdt,2)
-#         # Shift next time values to present time for the next step
-#         updateForNextStep!(ϕ_s,ψ_s,Z,dϕdt_s,dψdt_s,dZdt)
+        #Move a time step
+        @everywhere workers() half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
+        @everywhere workers() update_Paddings(2)
+        @everywhere workers() begin
+            leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,($meanSqrRenorm))
+            half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,2)
+        #Shift next time values to present time for the next step
+            updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+        end
 
-#         # Take a snap
-#         if mod(t,snapInterval) == 0
-#             #!! UPDATE!!!
-#             #!these mappings are unnecessary just adjust your routines to work with single-index notation
-#             @views ϕ[:,:,0] .= ravelDimension(ϕ_s[:,1])    #! i just realized; if i'll just evolve single index ones i don't really need 
-#             @views ψ[:,:,0] .= ravelDimension(ψ_s[:,1])    #! time coordinates of original ϕ and ψ; just reduce them once the testing is over.
-#             @views dϕdt[:,:,0] .= ravelDimension(dϕdt_s[:,1])
-#             @views dψdt[:,:,0] .= ravelDimension(dψdt_s[:,1])
 
-#             totalE,ZED = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
-#             ZED_t = ravelDimension(ZED) #!unnecessary temp array.
 
-#             writedlm(ϕdataIO, ϕ[:,:,0])
-#             writedlm(ψdataIO, ψ[:,:,0])
-#             writedlm(energyIO,totalE)
-#             writedlm(ZedIO,ZED_t)
+        # Take a snap
+        if mod(t,snapInterval) == 0
+            #Calculate energy
+            totalE = energy(ZED_gl,meanSqrRenorm,zPE)
+            
+
+            #Update global fields for recording
+            for i=2:nprocs()
+                lx_p, rx_p, ly_p, ry_p = chunker(i) #_p: physical
+                ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ϕ[lx_l:rx_l,
+                                                                    ly_l:ry_l,1] 
+                ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ψ[lx_l:rx_l,
+                                                                    ly_l:ry_l,1] 
+            end
+
+            #Record field and energy data
+            writedlm(ϕdataIO, ϕ_gl[:,:])
+            writedlm(ψdataIO, ψ_gl[:,:])
+            writedlm(energyIO,totalE)
+            writedlm(ZedIO,ZED_gl)
+
+            #!
+            #Check constraints
+            # Z_gl_f = mapZTo2Index(Z_gl[:,:,:,:])
+            # dZdt_gl_f = mapZTo2Index(dZdt_gl[:,:,:,:])
+            # @views constraints_checker(Z_gl_f,dZdt_gl_f)
+            # @views conserved_checker(Z_gl_f,dZdt_gl_f)
+        end 
+    end
+    
+end
+
+
+@everywhere function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
+    dt_half =dt/2   #!not sure yet if i wanna keep them. harder to read.
+    for j=padd+1:Nx_loc+padd
+        for k=padd+1:Ny_loc+padd
+            ϕ[j,k,2] = ϕ[j,k,t] + dt_half*( dϕdt[j-padd,k-padd,t] ) 
+            ψ[j,k,2] = ψ[j,k,t] + dt_half*( dψdt[j-padd,k-padd,t] )
+            for l=1:Nx
+                for m=1:Ny
+                    Z[j,l,k,m,2] = Z[j,l,k,m,t] + dt_half*( dZdt[j-padd,l,k-padd,m,t] )
+                end
+            end
+        end
+    end
+end
+
+
+@everywhere function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
+    for j=padd+1:Nx_loc+padd
+        for k=padd+1:Ny_loc+padd
+            #Calculate fluxes for ϕ and ψ
+            ϕ_flux , ψ_flux =  @views fluxes_ϕ_ψ(ϕ[:,:,2],ψ[:,:,2],Z[:,:,:,:,2],meanSqrRenorm,j,k)
+            dϕdt[j-padd,k-padd,2] = dϕdt[j-padd,k-padd,1] + dt*( ϕ_flux )
+            dψdt[j-padd,k-padd,2] = dψdt[j-padd,k-padd,1] + dt*( ψ_flux )
+            for l=1:Nx
+                for m=1:Ny
+                    # @views Z_flux = flux_Z(ϕ[j,k,1],ψ[j,k,1],Z[:,l,:,m,1],j,k,nnl_x,nnr_x,nnl_y,nnr_y)
+                    Z_flux = flux_Z(ϕ,ψ,Z,j,l,k,m)
+                    dZdt[j-padd,l,k-padd,m,2] = dZdt[j-padd,l,k-padd,m,1] + dt*( Z_flux )
+                end
+            end
+        end
+    end
+
+end
+
+@everywhere function fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k)
+    #2-point function
+    meanSqr_Rho = @views sum(abs2, Z[j,:,k,:]) #!i need to check if this is the same as 2-index notation.
+
+    ϕ_flux = ( (ϕ[j+1,k] - 2ϕ[j,k] + ϕ[j-1,k])/dx^2 + (ϕ[j,k+1] - 2ϕ[j,k] + ϕ[j,k-1])/dy^2 
+            + ( m_ϕ^2 - α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[j,k]) ) * ϕ[j,k] )
+
+    ψ_flux = ( (ψ[j+1,k] - 2ψ[j,k] + ψ[j-1,k])/dx^2 + (ψ[j,k+1] - 2ψ[j,k] + ψ[j,k-1])/dy^2   
+            - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k] )
+
+return ϕ_flux ,ψ_flux
+end
+
+@everywhere function flux_Z(ϕ,ψ,Z,j,l,k,m)
+    Z_flux = ( (Z[j+1,l,k,m,2] - 2Z[j,l,k,m,2] + Z[j-1,l,k,m,2])/dx^2 
+             + (Z[j,l,k+1,m,2] - 2Z[j,l,k,m,2] + Z[j,l,k-1,m,2])/dy^2
+             - ( m_ρ^2 + α*abs2(ϕ[j,k,2]) + β*ψ[j,k,2]^2 ) * Z[j,l,k,m,2] )
+end
+
+@everywhere function updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+    #Shift time coordinates
+    @views begin
+        ϕ[:,:,1] .= ϕ[:,:,2]
+        ψ[:,:,1] .= ψ[:,:,2]
+        Z[:,:,:,:,1] .= Z[:,:,:,:,2]
+        dϕdt[:,:,1] .= dϕdt[:,:,2]
+        dψdt[:,:,1] .= dψdt[:,:,2]
+        dZdt[:,:,:,:,1] .= dZdt[:,:,:,:,2]
+    end
+end
+
+# 2-index notation (Leap-Frog)
+    # export time_evolve!
+    # #We use Leap-Frog: Position Verlet (LFPV) method to time evolve the system.
+    # #Position: refers to fields (i.e. ψ(t)) , Velocity: refers to time derivatives (i.e. dψdt(t))
+    # #LFPV first shifts the "position" to a half-integer time step with 
+    # #half Euler step (integrating to t+1/2 using velocity at time t - forward finite diff.)
+    # #Next, the "velocity" is leaped forward a full time step with 
+    # #full Euler step using the midpoint(t+1/2) "position" calculated in the previous step.
+    # #Then evolve the "position" back to an integer time-step using half-Euler now using "velocity" at the t+1 step.
+    # function time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
+
+    #     #Flatten ϕ, ψ, dϕdt, dψdt #!no offset for these#!
+    #     ϕ_s = im*zeros(N^2,2)
+    #     ψ_s = zeros(N^2,2)
+    #     dϕdt_s = im*zeros(N^2,2)
+    #     dψdt_s = zeros(N^2,2)
+    #     ϕ_s[:,1] =  @views flattenDimension(ϕ[:,:,0])   #!for these .= uses more allocations!
+    #     ψ_s[:,1] =  @views flattenDimension(ψ[:,:,0])  
+    #     dϕdt_s[:,1] =  @views flattenDimension(dϕdt[:,:,0])
+    #     dψdt_s[:,1] =  @views flattenDimension(dψdt[:,:,0])
+
+    #     #Snapshotting interval
+    #     if round(nt/nsnaps,RoundDown) == 0
+    #         snapInterval = 1
+    #         println("---Caution: Number of time steps is smaller than snaps!---")
+    #         println("Instead of ",nsnaps," snapshots, ",nt," snaps will be taken.","---")
+    #     else
+    #         snapInterval = round(Int,nt/nsnaps,RoundDown)
+    #         if nt/nsnaps != snapInterval
+    #             actualSnaps=round(Int,nt/snapInterval,RoundDown)
+    #             println("---Caution: Number of snapshots are not multiple of time steps.")
+    #             println("Instead of ",nsnaps," snapshots, ",actualSnaps," snaps will be taken.","---")
+    #         end
+    #     end
+
+    #     ϕdataIO = open("data/phi.dat","w") 
+    #     ψdataIO = open("data/psi.dat","w")
+    #     energyIO = open("data/energy.dat","w")
+    #     ZedIO = open("data/energies/ZED.dat","w")
+
+    #     # meanRhoSqrIO = open("data/meanRhoSqr.dat","w")
+    #     # ϕJLD = jldopen("data/phi.jld2","a")#!
+    #     # ψJLD = jldopen("data/psi.jld2","a")#!
+    #     # count=0
+
+    #     for t=1:nt
+            
+    #         #Move a time step
+    #         half_step!(ϕ_s,ψ_s,Z,dϕdt_s,dψdt_s,dZdt,1)
+    #         leap_forward!(ϕ_s,ψ_s,Z,dϕdt_s,dψdt_s,dZdt,meanSqrRenorm)
+    #         half_step!(ϕ_s,ψ_s,Z,dϕdt_s,dψdt_s,dZdt,2)
+    #         # Shift next time values to present time for the next step
+    #         updateForNextStep!(ϕ_s,ψ_s,Z,dϕdt_s,dψdt_s,dZdt)
+
+    #         # Take a snap
+    #         if mod(t,snapInterval) == 0
+    #             #!! UPDATE!!!
+    #             #!these mappings are unnecessary just adjust your routines to work with single-index notation
+    #             @views ϕ[:,:,0] .= ravelDimension(ϕ_s[:,1])    #! i just realized; if i'll just evolve single index ones i don't really need 
+    #             @views ψ[:,:,0] .= ravelDimension(ψ_s[:,1])    #! time coordinates of original ϕ and ψ; just reduce them once the testing is over.
+    #             @views dϕdt[:,:,0] .= ravelDimension(dϕdt_s[:,1])
+    #             @views dψdt[:,:,0] .= ravelDimension(dψdt_s[:,1])
+
+    #             totalE,ZED = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
+    #             ZED_t = ravelDimension(ZED) #!unnecessary temp array.
+
+    #             writedlm(ϕdataIO, ϕ[:,:,0])
+    #             writedlm(ψdataIO, ψ[:,:,0])
+    #             writedlm(energyIO,totalE)
+    #             writedlm(ZedIO,ZED_t)
+            
+
+    #             #!
+    #             # @views recordSnap(ϕ[:,:,0],ψ[:,:,0],totalE,ZED_t,
+    #             #                     ϕdataIO,ψdataIO,energyIO,ZedIO)
         
+    #             #!
+    #             #check constraints
+    #             # @views constraints_checker(Z[:,:,1],dZdt[:,:,1])
+    #             # @views conserved_checker(Z[:,:,1],dZdt[:,:,1])
+    #         end
 
-#             #!
-#             # @views recordSnap(ϕ[:,:,0],ψ[:,:,0],totalE,ZED_t,
-#             #                     ϕdataIO,ψdataIO,energyIO,ZedIO)
-    
-#             #!
-#             #check constraints
-#             # @views constraints_checker(Z[:,:,1],dZdt[:,:,1])
-#             # @views conserved_checker(Z[:,:,1],dZdt[:,:,1])
-#         end
-
-#     end
-#     # close(ϕJLD)#!
-#     # close(ψJLD)#!
-# end
+    #     end
+    #     # close(ϕJLD)#!
+    #     # close(ψJLD)#!
+    # end
 
 
 
-# #Half-step iterate "position" using present time values (t=0)
-# #Half-step iterate "position" using next time value of "velocity" (t=1)
-# function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
-#     # For t=0, fields are calculated at time 1/2 & for t=1 they are calculated fully at t=1.
-#     N2 = size(ϕ,1)  #! these seem to slightly improve allocations
-#     dt_half =dt/2   #!not sure yet if i wanna keep them. harder to read.
-#     # count =0#!
-#     Threads.@threads for J=1:N2
-#     # for J=1:N2
-#         # count +=1#!
-#         # println(count)#!
-#         ϕ[J,2] = ϕ[J,t] + dt_half*( dϕdt[J,t] )
-#         ψ[J,2] = ψ[J,t] + dt_half*( dψdt[J,t] )
-#         for K=1:N2
-#             Z[J,K,2] = Z[J,K,t] + dt_half*( dZdt[J,K,t] )
-#         end
-#     end
+    # #Half-step iterate "position" using present time values (t=0)
+    # #Half-step iterate "position" using next time value of "velocity" (t=1)
+    # function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
+    #     # For t=0, fields are calculated at time 1/2 & for t=1 they are calculated fully at t=1.
+    #     N2 = size(ϕ,1)  #! these seem to slightly improve allocations
+    #     dt_half =dt/2   #!not sure yet if i wanna keep them. harder to read.
+    #     # count =0#!
+    #     Threads.@threads for J=1:N2
+    #     # for J=1:N2
+    #         # count +=1#!
+    #         # println(count)#!
+    #         ϕ[J,2] = ϕ[J,t] + dt_half*( dϕdt[J,t] )
+    #         ψ[J,2] = ψ[J,t] + dt_half*( dψdt[J,t] )
+    #         for K=1:N2
+    #             Z[J,K,2] = Z[J,K,t] + dt_half*( dZdt[J,K,t] )
+    #         end
+    #     end
 
-# end
-
-
-# #Full-step iterate "velocity" using half-integer time value of "position" (t=1/2)
-# function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
-    
-#     Threads.@threads for J=1:N^2
-#     # for J=1:N^2
-#         #PBC
-#         nnl_x, nnr_x, nnl_y, nnr_y = pbc1D(J)
-#         #Calculate fluxes for ϕ and ψ
-#         @views ϕ_flux , ψ_flux = fluxes_ϕ_ψ(ϕ[:,2],ψ[:,2],Z[:,:,2],meanSqrRenorm,J,nnl_x,nnr_x,nnl_y,nnr_y)
-#         dϕdt[J,2] = dϕdt[J,1] + dt*( ϕ_flux )
-#         dψdt[J,2] = dψdt[J,1] + dt*( ψ_flux )
-#         for K=1:N^2
-#             Z_flux = flux_Z(ϕ,ψ,Z,J,K,nnl_x,nnr_x,nnl_y,nnr_y)
-#             dZdt[J,K,2] = dZdt[J,K,1] + dt*( Z_flux )
-#         end
-#     end
-
-# end
+    # end
 
 
-# function fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,J,nnl_x,nnr_x,nnl_y,nnr_y)
-#     #2-point function
-#     meanSqr_Rho = @views sum(abs2, Z[J,:])
+    # #Full-step iterate "velocity" using half-integer time value of "position" (t=1/2)
+    # function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
+        
+    #     Threads.@threads for J=1:N^2
+    #     # for J=1:N^2
+    #         #PBC
+    #         nnl_x, nnr_x, nnl_y, nnr_y = pbc1D(J)
+    #         #Calculate fluxes for ϕ and ψ
+    #         @views ϕ_flux , ψ_flux = fluxes_ϕ_ψ(ϕ[:,2],ψ[:,2],Z[:,:,2],meanSqrRenorm,J,nnl_x,nnr_x,nnl_y,nnr_y)
+    #         dϕdt[J,2] = dϕdt[J,1] + dt*( ϕ_flux )
+    #         dψdt[J,2] = dψdt[J,1] + dt*( ψ_flux )
+    #         for K=1:N^2
+    #             Z_flux = flux_Z(ϕ,ψ,Z,J,K,nnl_x,nnr_x,nnl_y,nnr_y)
+    #             dZdt[J,K,2] = dZdt[J,K,1] + dt*( Z_flux )
+    #         end
+    #     end
 
-#     ϕ_flux = ( (ϕ[nnr_x] - 2ϕ[J] + ϕ[nnl_x])/dx^2 + (ϕ[nnr_y] - 2ϕ[J] + ϕ[nnl_y])/dy^2 
-#             + ( m_ϕ^2 -α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[J]) ) * ϕ[J] )
+    # end
 
-#     ψ_flux = ( (ψ[nnr_x] - 2ψ[J] + ψ[nnl_x])/dx^2 + (ψ[nnr_y] - 2ψ[J] + ψ[nnl_y])/dy^2
-#             - ( m_ψ^2 +β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[J] )
 
-# return ϕ_flux, ψ_flux
-# end
+    # function fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,J,nnl_x,nnr_x,nnl_y,nnr_y)
+    #     #2-point function
+    #     meanSqr_Rho = @views sum(abs2, Z[J,:])
 
-# function flux_Z(ϕ,ψ,Z,J,K,nnl_x,nnr_x,nnl_y,nnr_y)
-#     Z_flux = ( (Z[nnr_x,K,2] - 2Z[J,K,2] + Z[nnl_x,K,2])/dx^2 + (Z[nnr_y,K,2] - 2Z[J,K,2] + Z[nnl_y,K,2])/dy^2
-#                 - ( m_ρ^2 + α*abs2(ϕ[J,2]) + β*ψ[J,2]^2 ) * Z[J,K,2] )
-# end
+    #     ϕ_flux = ( (ϕ[nnr_x] - 2ϕ[J] + ϕ[nnl_x])/dx^2 + (ϕ[nnr_y] - 2ϕ[J] + ϕ[nnl_y])/dy^2 
+    #             + ( m_ϕ^2 -α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[J]) ) * ϕ[J] )
 
-# function updateForNextStep!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
-#     @views begin
-#         ϕ[:,1] .= ϕ[:,2]
-#         ψ[:,1] .= ψ[:,2]
-#         Z[:,:,1] .= Z[:,:,2]
-#         dϕdt[:,1] .= dϕdt[:,2]
-#         dψdt[:,1] .= dψdt[:,2]
-#         dZdt[:,:,1] .= dZdt[:,:,2]
-#     end
-# end
+    #     ψ_flux = ( (ψ[nnr_x] - 2ψ[J] + ψ[nnl_x])/dx^2 + (ψ[nnr_y] - 2ψ[J] + ψ[nnl_y])/dy^2
+    #             - ( m_ψ^2 +β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[J] )
 
-# # function recordSnap(ϕ,ψ,totalE,ZED_t,
-# #                     ϕdataIO,ψdataIO,energyIO,ZedIO)
+    # return ϕ_flux, ψ_flux
+    # end
 
-# #     # writedlm(ϕdataIO, ϕ)
-# #     # writedlm(ψdataIO, ψ)
-# #     # writedlm(energyIO,totalE)
-# #     # writedlm(ZedIO,ZED_t)
+    # function flux_Z(ϕ,ψ,Z,J,K,nnl_x,nnr_x,nnl_y,nnr_y)
+    #     Z_flux = ( (Z[nnr_x,K,2] - 2Z[J,K,2] + Z[nnl_x,K,2])/dx^2 + (Z[nnr_y,K,2] - 2Z[J,K,2] + Z[nnl_y,K,2])/dy^2
+    #                 - ( m_ρ^2 + α*abs2(ϕ[J,2]) + β*ψ[J,2]^2 ) * Z[J,K,2] )
+    # end
 
-# #     # write(ϕJLD,"snapshot_$count",ϕ[:,:,0])#!
-# #     # write(ψJLD,"snapshot_$count",ψ[:,:,0])#!
-# # end
+    # function updateForNextStep!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+    #     @views begin
+    #         ϕ[:,1] .= ϕ[:,2]
+    #         ψ[:,1] .= ψ[:,2]
+    #         Z[:,:,1] .= Z[:,:,2]
+    #         dϕdt[:,1] .= dϕdt[:,2]
+    #         dψdt[:,1] .= dψdt[:,2]
+    #         dZdt[:,:,1] .= dZdt[:,:,2]
+    #     end
+    # end
 
-# end #module
+    # # function recordSnap(ϕ,ψ,totalE,ZED_t,
+    # #                     ϕdataIO,ψdataIO,energyIO,ZedIO)
+
+    # #     # writedlm(ϕdataIO, ϕ)
+    # #     # writedlm(ψdataIO, ψ)
+    # #     # writedlm(energyIO,totalE)
+    # #     # writedlm(ZedIO,ZED_t)
+
+    # #     # write(ϕJLD,"snapshot_$count",ϕ[:,:,0])#!
+    # #     # write(ψJLD,"snapshot_$count",ψ[:,:,0])#!
+    # # end
+
+    # end #module
 
 
 
@@ -419,147 +558,5 @@ using JLD2
     # end 
 
 # end
-
-
-
-
-
-# 4-index Notation (Leap-frog)
-export time_evolve!
-function time_evolve!(ϕ_gl,ψ_gl,meanSqrRenorm,zPE)
-
-    #Snapshotting interval
-    if round(nt/nsnaps,RoundDown) == 0
-        snapInterval = 1
-        println("---Caution: Number of time steps is smaller than snaps!---")
-        println("Instead of ",nsnaps," snapshots, ",nt," snaps will be taken.","---")
-    else
-        snapInterval = round(Int,nt/nsnaps,RoundDown)
-        if nt/nsnaps != snapInterval
-            actualSnaps=round(Int,nt/snapInterval,RoundDown)
-            println("---Caution: Number of snapshots are not multiple of time steps.")
-            println("Instead of ",nsnaps," snapshots, ",actualSnaps," snaps will be taken.","---")
-        end
-    end
-
-    ϕdataIO = open("data/phi.dat","w") 
-    ψdataIO = open("data/psi.dat","w")
-    energyIO = open("data/energy.dat","w")
-    ZedIO = open("data/energies/ZED.dat","w")
-
-
-    for t=1:nt
-        
-        #Move a time step
-        @everywhere workers() half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
-        @everywhere workers() update_Paddings(2)
-        @everywhere workers() begin
-            leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,($meanSqrRenorm))
-            half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,2)
-            #Shift next time values to present time for the next step
-            updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
-        end
-
-
-
-        # Take a snap
-        if mod(t,snapInterval) == 0
-            #Calculate energy
-            totalE,ZED = energy(meanSqrRenorm,zPE)
-
-            #Update global fields for recording
-            for i=2:nprocs()
-                lx_p, rx_p, ly_p, ry_p = chunker(i) #_p: physical
-                ϕ_gl[lx_p:rx_p,ly_p:ry_p,0] .= @fetchfrom i Main.ϕ[padd+1:Nx_loc+padd,
-                                                                    1+padd:padd+Ny_loc,1] 
-                ψ_gl[lx_p:rx_p,ly_p:ry_p,0] .= @fetchfrom i Main.ψ[padd+1:Nx_loc+padd,
-                                                                    1+padd:padd+Ny_loc,1] 
-            end
-
-            #Record field and energy data
-            writedlm(ϕdataIO, ϕ_gl[:,:,0])
-            writedlm(ψdataIO, ψ_gl[:,:,0])
-            writedlm(energyIO,totalE)
-            writedlm(ZedIO,ZED)
-
-            #!
-            #Check constraints
-            # Z_gl_f = mapZTo2Index(Z_gl[:,:,:,:,0])
-            # dZdt_gl_f = mapZTo2Index(dZdt_gl[:,:,:,:,0])
-            # @views constraints_checker(Z_gl_f,dZdt_gl_f)
-            # @views conserved_checker(Z_gl_f,dZdt_gl_f)
-        end
-
-
-        
-    end
-end
-
-
-@everywhere function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
-    dt_half =dt/2   #!not sure yet if i wanna keep them. harder to read.
-    for j=padd+1:Nx_loc+padd
-        for k=padd+1:Ny_loc+padd
-            ϕ[j,k,2] = ϕ[j,k,t] + dt_half*( dϕdt[j,k,t] ) 
-            ψ[j,k,2] = ψ[j,k,t] + dt_half*( dψdt[j,k,t] )
-            for l=1:Nx
-                for m=1:Ny
-                    Z[j,l,k,m,2] = Z[j,l,k,m,t] + dt_half*( dZdt[j,l,k,m,t] )
-                end
-            end
-        end
-    end
-end
-
-
-@everywhere function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
-    for j=padd+1:Nx_loc+padd
-        for k=padd+1:Ny_loc+padd
-            #Calculate fluxes for ϕ and ψ
-            ϕ_flux , ψ_flux =  @views fluxes_ϕ_ψ(ϕ[:,:,2],ψ[:,:,2],Z[:,:,:,:,2],meanSqrRenorm,j,k)
-            dϕdt[j,k,2] = dϕdt[j,k,1] + dt*( ϕ_flux )
-            dψdt[j,k,2] = dψdt[j,k,1] + dt*( ψ_flux )
-            for l=1:Nx
-                for m=1:Ny
-                    # @views Z_flux = flux_Z(ϕ[j,k,1],ψ[j,k,1],Z[:,l,:,m,1],j,k,nnl_x,nnr_x,nnl_y,nnr_y)
-                    Z_flux = flux_Z(ϕ,ψ,Z,j,l,k,m)
-                    dZdt[j,l,k,m,2] = dZdt[j,l,k,m,1] + dt*( Z_flux )
-                end
-            end
-        end
-    end
-
-end
-
-@everywhere function fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k)
-    #2-point function
-    meanSqr_Rho = @views sum(abs2, Z[j,:,k,:]) #!i need to check if this is the same as 2-index notation.
-
-    ϕ_flux = ( (ϕ[j+1,k] - 2ϕ[j,k] + ϕ[j-1,k])/dx^2 + (ϕ[j,k+1] - 2ϕ[j,k] + ϕ[j,k-1])/dy^2 
-            + ( m_ϕ^2 - α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[j,k]) ) * ϕ[j,k] )
-
-    ψ_flux = ( (ψ[j+1,k] - 2ψ[j,k] + ψ[j-1,k])/dx^2 + (ψ[j,k+1] - 2ψ[j,k] + ψ[j,k-1])/dy^2   
-            - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k] )
-
-return ϕ_flux ,ψ_flux
-end
-
-@everywhere function flux_Z(ϕ,ψ,Z,j,l,k,m)
-    Z_flux = ( (Z[j+1,l,k,m,2] - 2Z[j,l,k,m,2] + Z[j-1,l,k,m,2])/dx^2 
-             + (Z[j,l,k+1,m,2] - 2Z[j,l,k,m,2] + Z[j,l,k-1,m,2])/dy^2
-             - ( m_ρ^2 + α*abs2(ϕ[j,k,2]) + β*ψ[j,k,2]^2 ) * Z[j,l,k,m,2] )
-end
-
-@everywhere function updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
-    #Shift time coordinates
-    @views begin
-        ϕ[:,:,1] .= ϕ[:,:,2]
-        ψ[:,:,1] .= ψ[:,:,2]
-        Z[:,:,:,:,1] .= Z[:,:,:,:,2]
-        dϕdt[:,:,1] .= dϕdt[:,:,2]
-        dψdt[:,:,1] .= dψdt[:,:,2]
-        dZdt[:,:,:,:,1] .= dZdt[:,:,:,:,2]
-    end
-end
 
 end #module

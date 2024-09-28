@@ -155,15 +155,15 @@ end
         #Find neighbors
         n_left, n_right, n_bottom, n_top = find_neighbours(myid())
         #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
-        ψ[1:padd, padd+1:Ny_loc+padd, t]            .= @fetchfrom n_left   getData_ψ(1,t)
-        ψ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd, t] .= @fetchfrom n_right  getData_ψ(2,t)
-        ψ[padd+1:Nx_loc+padd, 1:padd, t]            .= @fetchfrom n_bottom getData_ψ(3,t)
-        ψ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end, t] .= @fetchfrom n_top    getData_ψ(4,t)
-
         ϕ[1:padd, padd+1:Ny_loc+padd, t]            .= @fetchfrom n_left   getData_ϕ(1,t)
         ϕ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd, t] .= @fetchfrom n_right  getData_ϕ(2,t)
         ϕ[padd+1:Nx_loc+padd, 1:padd, t]            .= @fetchfrom n_bottom getData_ϕ(3,t)
         ϕ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end, t] .= @fetchfrom n_top    getData_ϕ(4,t)
+
+        ψ[1:padd, padd+1:Ny_loc+padd, t]            .= @fetchfrom n_left   getData_ψ(1,t)
+        ψ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd, t] .= @fetchfrom n_right  getData_ψ(2,t)
+        ψ[padd+1:Nx_loc+padd, 1:padd, t]            .= @fetchfrom n_bottom getData_ψ(3,t)
+        ψ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end, t] .= @fetchfrom n_top    getData_ψ(4,t)
 
         Z[1:padd, :, padd+1:Ny_loc+padd, :, t]            .= @fetchfrom n_left   getData_Z(1,t)
         Z[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :, t] .= @fetchfrom n_right  getData_Z(2,t)
@@ -182,11 +182,11 @@ end
     if neighbour == 1
         return ψ[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd, t]
     elseif neighbour == 2
-        return ψ[padd+1:2*padd, padd+1:Ny_loc+padd, t]
+        return ψ[padd+1:padding_size, padd+1:Ny_loc+padd, t]
     elseif neighbour == 3
         return  ψ[padd+1:Nx_loc+padd, Ny_loc+padd:end-padd, t]
     elseif neighbour == 4
-        return ψ[padd+1:Nx_loc+padd, padd+1:2*padd, t]
+        return ψ[padd+1:Nx_loc+padd, padd+1:padding_size, t]
     end
 end
 
@@ -197,11 +197,11 @@ end
     if neighbour == 1
         return ϕ[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd, t]
     elseif neighbour == 2
-        return ϕ[padd+1:2*padd, padd+1:Ny_loc+padd, t]
+        return ϕ[padd+1:padding_size, padd+1:Ny_loc+padd, t]
     elseif neighbour == 3
         return ϕ[padd+1:Nx_loc+padd, Ny_loc+padd:end-padd, t]
     elseif neighbour == 4
-        return ϕ[padd+1:Nx_loc+padd, padd+1:2*padd, t]
+        return ϕ[padd+1:Nx_loc+padd, padd+1:padding_size, t]
     end
 end
 
@@ -212,11 +212,11 @@ end
     if neighbour == 1
         return Z[Nx_loc+padd:end-padd, :, padd+1:Ny_loc+padd, :, t]
     elseif neighbour == 2
-        return Z[padd+1:2*padd, :, padd+1:Ny_loc+padd, :, t]
+        return Z[padd+1:padding_size, :, padd+1:Ny_loc+padd, :, t]
     elseif neighbour == 3
         return Z[padd+1:Nx_loc+padd, :, Ny_loc+padd:end-padd, :, t]
     elseif neighbour == 4
-        return Z[padd+1:Nx_loc+padd, :, padd+1:2*padd, :, t]
+        return Z[padd+1:Nx_loc+padd, :, padd+1:padding_size, :, t]
     end
 end
 

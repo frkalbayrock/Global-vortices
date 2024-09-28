@@ -1,5 +1,28 @@
 # CHANGELOG
 
+#### v0.3.5
+Various small improvements and changes on the parallel-julia code. 
+
+All the changes listed:
+Auxiliary.jl:
+- 2*padd is replaced with padding_size for improved performance. (Even slighest improvements for parallel seems to improve performance)
+Energy.jl:
+- ZED_gl is now (see updates for main.jl below) feeded to the function as an argument instead defining every time energy() is called and returned.
+Evolution.jl:
+- ZED_gl is now (see updates for main.jl below) feeded to the function as an argument instead defining every time energy() is called and returned.
+- Some confusion in the indices of local variables is sorted out. We now write them explicitly as padd+1:padd+Nx_loc
+- Small changes in the running indices of dϕdt, dψdt and dZdt (see main.jl changes below)  
+IC.jl:
+- Small syntax changes
+- zeroPointEnergy() is updated to define Z_partial ath the fetch call not before.
+main.jl:
+- Global field arrays are define as const global julia variables outside of the run_ev() function. We'll continue testing if this gives significant improvements or not.
+- Paddings are removed from the time derivative fields dϕdt,dψdt and dZdt for memory relief. dZdt with the paddings gives a significant memory allocation on paper; about N^3. As a result we also updated all the routines with the time derivatives to run for loops with correct indices. For loops haven't been changed just the dummy indicis in time derivatives are shifted by the amount of padding; i.e. j-> j-padd.
+- Time coordinates from the global fields are removed. There is no need since we evolve the local ones. 
+- ZED_gl is defined as another field and sent as an argument to the function that were recording or returning it. That way we no longer defined ZED at each recording iteration from scratch. 
+
+
+
 #### v0.3.2
 Z_gl is removed from the timeEvolution() which was put there only for constraints and conserved quantities check.
 
