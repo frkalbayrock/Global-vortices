@@ -1,8 +1,10 @@
 module Parameters
-export dx,dy,dt,N,Nx,Ny,L,lx,rx,ly,ry,nt,nsnaps
+export dx,dy,dt,N,Nx,Ny,lx,rx,ly,ry,nt,nsnaps
 export λ,α,β,η,m_ρ,m_ϕ,m_ψ
-export nprocs_perdim,Nx_loc,Ny_loc,padding_size,padd
-export lx_l,rx_l,ly_l,ry_l 
+export ndims, nprocs_perdim, periods
+export Nx_loc, Ny_loc, padding, padd
+export lx_l,rx_l,ly_l,ry_l
+export snapInterval
 
 #--Lattice Parameters
 const N=20
@@ -15,7 +17,6 @@ const ry=rx
 const dx=0.4
 const dy=dx
 const dt=dx/50.0
-const L=Nx*dx
 const nt=2000
 #!maybe add L_x and L_y later (if needed)
 
@@ -30,21 +31,28 @@ const m_ψ=1
 
 #--Data Recorder
 const nsnaps=200
+if round(nt/nsnaps,RoundDown) == 0
+    const snapInterval = 1
+else
+    const snapInterval = round(Int,nt/nsnaps,RoundDown)
+end
 
-#--Parallel
+#--Parallel: MPI Parameters
 const ndims = 2
 const nprocs_perdim = [2 2]
-#Physical sizes of chunks
+const periods = [true true]
+#--Parallel: Local array sizes and indices for OffsetArrays
 const Nx_loc = Int(Nx/nprocs_perdim[1])
 const Ny_loc = Int(Ny/nprocs_perdim[2])
 #Padding to be added on top of the physical sizes
-const padding_size = 2 #depends on the order of derivatives
-const padd = Int(padding_size/2) #padding_perside
+const padding = 2 #depends on the order of derivatives
+const padd = Int(padding/2) #padding_perside
 #Physically useful ends of local padded arrays
 const lx_l = padd + 1
 const rx_l = padd + Nx_loc
 const ly_l = padd + 1
 const ry_l = padd + Ny_loc
+
 
 
 end #module

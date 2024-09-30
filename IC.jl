@@ -5,135 +5,143 @@ using .Parameters
 using LinearAlgebra
 include("IndexMap.jl")
 using .IndexMap
-include("Auxiliary.jl")
-using .Auxiliary_Routines
-
+using MPI
+include("MPIAux.jl")
+using .MPIAux
 
 #!
 using OffsetArrays
-using Distributed
-#!
-@everywhere using Profile
-@everywhere using PProf
-@everywhere using DelimitedFiles
+using DelimitedFiles
 
-#------------------------------------------------------------------------------------------------#
+#!MPI PART
+const comm = MPI.COMM_WORLD
+const myrank = MPI.Comm_rank(comm)
+const nprocs = MPI.Comm_size(comm)
+const comm_cart = MPI.Cart_create(comm, nprocs_perdim; periodic=periods, reorder=false)
+const coords_cart = MPI.Cart_coords(comm_cart, myrank)
+const lx_p, rx_p, ly_p, ry_p = chunker(myrank) #p stands for "physical"
+
+
 #initialConditions sets the initial conditions for the fields ϕ,ψ,Z and calculates the renormalization factor
 export initialConditions!
 #Set initial conditions for the fields ϕ, ψ, ρ
-function initialConditions!(ϕ_gl,ψ_gl,Z_gl,dZdt_gl)
+function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
 
-    #---Set i.c. for ϕ and ψ locally
-    @everywhere workers() ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
+    ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
 
-    #---Collect ϕ and ψ to global fields for Ω calculation
-    for i=2:nprocs()
-        lx_p, rx_p, ly_p, ry_p = chunker(i) #_p: physical
-        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ϕ[padd+1:Nx_loc+padd,
-                                                        1+padd:padd+Ny_loc,1] 
-        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ψ[padd+1:Nx_loc+padd,
-                                                        1+padd:padd+Ny_loc,1] 
+    #!For now let's just calculate the omega matrix on a single core. 
+    recvbuff_ψ = @views MPI.gather(ψ[padd+1:padd+Nx_loc,padd+1:padd+Ny_loc,1], comm; root=0)
+    recvbuff_ϕ = @views MPI.gather(ϕ[padd+1:padd+Nx_loc,padd+1:padd+Ny_loc,1], comm; root=0)
+    #Reduce ϕ and ψ on master for calculation of Z
+    if myrank==0
+        for rank=0:nprocs-1
+            lx_loc , rx_loc, ly_loc, ry_loc = chunker(rank)
+            ϕ_loc = recvbuff_ϕ[rank+1]
+            ψ_loc = recvbuff_ψ[rank+1]
+
+            Main.ϕ_gl[lx_loc:rx_loc,ly_loc:ry_loc] .= ϕ_loc[:,:]
+            Main.ψ_gl[lx_loc:rx_loc,ly_loc:ry_loc] .= ψ_loc[:,:]
+        end
+
+        #2-index to 1-index mapping
+        ϕ_s = flattenDimension(Main.ϕ_gl)
+        ψ_s = flattenDimension(Main.ψ_gl)
+        #Get Sqrt(Omega) and its inverse matrices
+        S_Ωzero, inv_S_Ωzero = omegaIC(ϕ_s,ψ_s)
+
+        #!
+        #Test 4-indexed S_Ωzero, inv_S_Ωzero
+        S_Ωzero_f = mapZTo4Index(S_Ωzero)
+        inv_S_Ωzero_f = mapZTo4Index(inv_S_Ωzero)
+
+        #!
+        #Z (ρ) i.c.
+        Z_gl = OffsetArray(Array{ComplexF64,4}(undef, Nx, Nx, Ny, Ny), lx:rx,lx:rx, ly:ry, ly:ry)
+        dZdt_gl = OffsetArray(Array{ComplexF64,4}(undef, Nx, Nx, Ny, Ny), lx:rx,lx:rx, ly:ry, ly:ry)
+        Z_gl .= -im/sqrt(2) .* inv_S_Ωzero_f
+        dZdt_gl .= 1/sqrt(2) .* S_Ωzero_f
     end
 
-    #---Calculate Ω
-    #2-index to 1-index mapping
-    ϕ_s = @views flattenDimension(ϕ_gl[:,:])
-    ψ_s = @views flattenDimension(ψ_gl[:,:])
-    #Get Sqrt(Omega) and its inverse matrices
-    S_Ωzero, inv_S_Ωzero = omegaIC(ϕ_s,ψ_s)
+    #Distribute Z for domain decomposition
+    if myrank==0
+        @views Z[lx_l:rx_l,:,
+          ly_l:ry_l,:,1]    = Z_gl[lx_p:rx_p,:,ly_p:ry_p,:]
+        @views dZdt[lx_l:rx_l,:,
+             ly_l:ry_l,:,1] = dZdt_gl[lx_p:rx_p,:,ly_p:ry_p,:]
 
-
-
-    #---Set i.c. for global Z
-    #4-indexed Z and Ω
-    S_Ωzero_f = mapZTo4Index(S_Ωzero)
-    inv_S_Ωzero_f = mapZTo4Index(inv_S_Ωzero)
-    #!This part can be done on workers since omega's are now 4-indexed
-    #!Then we can skip having a global Z and dZdt
-
-    #Z (ρ) i.c.   
-    Z_gl[:,:,:,:] .= -im/sqrt(2) .* inv_S_Ωzero_f
-    dZdt_gl[:,:,:,:].= 1/sqrt(2) .* S_Ωzero_f
-
-
-    #---Chunk Z and send it to workers
-    @everywhere workers() begin
-        lx_p, rx_p, ly_p, ry_p = chunker(myid())
-        lx_p = Int(Nx/2+lx_p)
-        rx_p = Int(Nx/2+rx_p)
-        ly_p = Int(Ny/2+ly_p)
-        ry_p = Int(Ny/2+ry_p)
-
-        Z[padd+1:Nx_loc+padd,:,
-            padd+1:Ny_loc+padd,:,1] .= ($Z_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
-
-        # dZdt[padd+1:Nx_loc+padd,:,
-        #     padd+1:Ny_loc+padd,:,1] .= ($dZdt_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
-        dZdt[:,:,:,:,1] .= ($dZdt_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
+        #---Send Z
+        for idp=1:nprocs-1
+             #Find the chunks location in the global
+            lx_loc, rx_loc, ly_loc, ry_loc = chunker(idp)
+            MPI.Send(Z_gl[lx_loc:rx_loc,:,ly_loc:ry_loc,:].parent, comm; dest=idp, tag=1)
+        end
+        #---Send dZdt
+        for idp=1:nprocs-1
+            #Find the chunks location in the global
+            lx_loc, rx_loc, ly_loc, ry_loc = chunker(idp)
+            MPI.Send(dZdt_gl[lx_loc:rx_loc,:,ly_loc:ry_loc,:].parent, comm; dest=idp, tag=2)
+        end
+        
+    else
+        recvdata = im*zeros(Nx_loc,Nx,Ny_loc,Ny)
+        MPI.Recv!(recvdata,comm; source=0,tag=1)
+        Z[lx_l:rx_l,:,
+          ly_l:ry_l,:,1] .= recvdata
+        MPI.Recv!(recvdata,comm; source=0,tag=2)
+        dZdt[lx_l:rx_l,:,
+             ly_l:ry_l,:,1] .= recvdata
     end
-    
-  
 
-    # #!Test by collecting back what we sent and recording
-    # Z_test = im*zeros(Nx,Nx,Ny,Ny)
-    # for i in 2:nprocs()
-    #     lx_p, rx_p, ly_p, ry_p = chunker(i)
-    #     lx_p = Int(Nx/2+lx_p)
-    #     rx_p = Int(Nx/2+rx_p)
-    #     ly_p = Int(Ny/2+ly_p)
-    #     ry_p = Int(Ny/2+ry_p)
-    #     Z_test[lx_p:rx_p,:,ly_p:ry_p,:] .= @fetchfrom i Main.Z[padd+1:padd+Nx_loc,:,
-    #                              padd+1:padd+Ny_loc,:,1]
-    # end
-    # open("data/Z_test.dat","w") do io
-    #     writedlm(io,Z_test[1,:,1,:])
+
+    # #Z (ρ) i.c.
+    # for J=1:N^2
+    #     for K=1:N^2
+    #         Z[J,K,1]=-im/sqrt(2) * inv_S_Ωzero[J,K]
+    #         dZdt[J,K,1] = 1/sqrt(2) * S_Ωzero[J,K]
+    #     end
     # end
 
 end
 
 
-@everywhere workers() function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
-
-    #Find the chunk's physical coordinates and physical ends
-    lx_p, rx_p, ly_p, ry_p = chunker(myid())
-
-    #ψ parameters
+#Sets the initial conditions for ϕ and ψ
+function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
     width=2.0
     amp=10
+    # vel=0.5
     vx=0.3
     vy=0.4
     r0=1.25
     γ=1/sqrt(1-(vx^2+vy^2))
-
     #ϕ and ψ i.c.
     for j in padd+1:Nx_loc+padd
         x = (lx_p+(j-padd)-1)*dx
         x1 = x-r0
         x2 = x+r0
-        for k=padd+1:Ny_loc+padd
+        for k in padd+1:Ny_loc+padd
             y = (ly_p+(k-padd)-1)*dy
             y1 = y-r0
             y2 = y+r0
             ϕ[j,k,1] = η
-            dϕdt[j-padd,k-padd,1] = 0
+            dϕdt[j,k,1] = 0
             ψ[j,k,1] = amp*(exp( -width/(vx^2 + vy^2)
-                               * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )       
-                          + exp( -width/(vx^2 + vy^2) 
-                             * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
-            dψdt[j-padd,k-padd,1] = ( 2amp *width *γ^2 *(x1 *(-vx) + y1 *(-vy)) 
+                                * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )
+                        + exp( -width/(vx^2 + vy^2) 
+                                * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
+            dψdt[j,k,1] = ( 2amp *width *γ^2 *(x1 *(-vx) + y1 *(-vy)) 
                             *exp(-width/(vx^2 + vy^2) * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1 *(-vy))^2 * γ^2 ))
-                            + 2amp *width *γ^2 *(x2 *(vx) + y2 *(vy)) 
+                        + 2amp *width *γ^2 *(x2 *(vx) + y2 *(vy)) 
                             *exp(-width/(vx^2 + vy^2) * ( (x2 *(vy) - y2 *(vx))^2 + (x2* (vx) + y2 *(vy))^2 * γ^2 ))    )
         end
     end
 end
 
-# #!for now I am skipping this one
-# @everywhere workers() function ic_Z(Z,dZdt)
-# end
-   
+
+
+
 #omegaIC calculates the Ω^2 matrix used in CQC calculations.
 #And it uses to return sqrt(Ω) and inverse of sqrt(Ω) matrices to be used in the initial conditions
+export omegaIC
 function omegaIC(ϕ_s,ψ_s)
     
     #Calculate the matrix Ω^2
@@ -210,7 +218,7 @@ function omegaIC(ϕ_s,ψ_s)
     end
 
     ###################--CHOOSE ONE OF THEM--###########################
-    # # Taking sqrt of matrix Ω (version 1) #!--->This looks faster for N=3 test (but for N=60,70 got slower and uses more ram)
+    #Taking sqrt of matrix Ω (version 1) #!--->This looks faster for N=3 test (but for N=60,70 got slower and uses more ram)
     # eigenValues=eigvals(Ω)
     # similarityMatrix = eigvecs(Ω)
     # diag_S_Ωzero=zeros(1:N^2,1:N^2)
@@ -240,6 +248,8 @@ function omegaIC(ϕ_s,ψ_s)
 end
 
 
+
+
 export renormalization
     #Renormalization is done using the <ρ^2>_0 factor which we calculate here.
     #<ρ^2>_0 is calculated using Z values when |ϕ|=η and ψ=0. 
@@ -248,39 +258,53 @@ export renormalization
     #Thus, instead of calculating Z at each lattice point for vacuum values of ϕ and ψ,
     #we only use the value of Z from the boundary.
     #More specifically, bottom right corner of lattice is used (could be any point on boundary)
-function renormalization()
-    corner_id = nprocs()
-    # Int(nprocs_perdim[1]+1)
-    meanSqrRenorm = @fetchfrom corner_id sum(abs2,Main.Z[Nx_loc+padd,:,Ny_loc+padd,:,1])
-    println(meanSqrRenorm)#!
+function renormalization(Z)
 
+    #Calculate on the corner chunk
+    if myrank==nprocs-1
+        meanSqrRenorm = sum(abs2,Z[rx_l,:,ry_l,:,1])
+    else
+        meanSqrRenorm = 0.0
+    end
+
+    #Send to all
+    meanSqrRenorm = MPI.Bcast(meanSqrRenorm, nprocs-1, comm) 
+
+    if myrank==1
+        @show meanSqrRenorm
+    end
+    
 return meanSqrRenorm
 end
 
 
+
+
 export zeroPointEnergy
-function zeroPointEnergy()
+function zeroPointEnergy(Z,dZdt)
 
-    #Get the proc id of the corner of x_max,y_max
-    corner_id = nprocs()
-    #Fetch from the corner chunk
-    Z_partial = @fetchfrom corner_id Main.Z[rx_l-1:rx_l,:,ry_l-1:ry_l,:,1]
-    dZdt_partial = @fetchfrom corner_id Main.dZdt[rx_l-padd,:,ry_l-padd,:,1]
-
-    #Calculate zPE
-    kEZRen = 0.
-    gEZRen = 0.
-    pEZRen = 0.
-    for l=1:Nx
-        for m=1:Ny
-            kEZRen = kEZRen + ( abs2( dZdt_partial[l,m] ) )/2
-            gEZRen = gEZRen + ( abs2( (Z_partial[2,l,2,m] - Z_partial[1,l,2,m])/dx ) 
-                                + abs2( (Z_partial[2,l,2,m] - Z_partial[2,l,1,m])/dy ) )/2
-            pEZRen = pEZRen + m_ρ^2*( abs2(Z_partial[2,l,2,m,1]) )/2
+    if myrank==nprocs-1
+        kEZRen = 0.
+        gEZRen = 0.
+        pEZRen = 0.
+        for l=1:Nx
+            for m=1:Ny
+                kEZRen = kEZRen + ( abs2( dZdt[rx_l,l,ry_l,m,1] ) )/2
+                gEZRen = gEZRen + ( abs2( (Z[rx_l,l,ry_l,m,1] - Z[rx_l-1,l,ry_l,m,1])/dx ) 
+                                  + abs2( (Z[rx_l,l,ry_l,m,1] - Z[rx_l,l,ry_l-1,m,1])/dy ) )/2
+                pEZRen = pEZRen + m_ρ^2*( abs2(Z[rx_l,l,ry_l,m,1]) )/2
+            end
         end
+        zPE = (kEZRen+gEZRen+pEZRen)/(dx*dy)
+    else 
+        zPE = 0.0
     end
-    zPE = (kEZRen+gEZRen+pEZRen)/(dx*dy)
-    println("zPE= ",zPE)
+    zPE = MPI.Bcast(zPE, nprocs-1, comm)
+
+    if myrank==0
+        @show zPE
+    end
+
 return zPE
 end
 

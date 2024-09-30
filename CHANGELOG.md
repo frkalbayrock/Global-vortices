@@ -1,5 +1,9 @@
 # CHANGELOG
 
+#### v0.3.6
+Parallelization done using MPI with a major change in the structure change of the whole code.
+Results match exactly with serial and the julia-parallel version. 
+
 #### v0.3.5
 Various small improvements and changes on the parallel-julia code. 
 

@@ -1,15 +1,17 @@
 module Time_Evolution
 
 include("Parameters.jl")
-include("Energy.jl")
-include("IndexMap.jl")
-include("Auxiliary.jl")
-include("Constraints.jl")
-using Distributed
 using .Parameters 
+using MPI
+include("MPIAux.jl")
+using .MPIAux
+include("Energy.jl")
 using .Energy
+include("IndexMap.jl")
 using .IndexMap
+include("Auxiliary.jl")
 using .Auxiliary_Routines
+include("Constraints.jl")
 using .Constraints_Conserveds
 using DelimitedFiles
 using OffsetArrays
@@ -17,89 +19,100 @@ using Profile
 using PProf
 using JLD2
 
-
+const comm = MPI.COMM_WORLD
+const myrank = MPI.Comm_rank(comm)
+const nprocs = MPI.Comm_size(comm)
+const comm_cart = MPI.Cart_create(comm, nprocs_perdim; periodic=periods, reorder=false)
+const coords_cart = MPI.Cart_coords(comm_cart, myrank)
+const lx_p, rx_p, ly_p, ry_p = chunker(myrank) #p stands for "physical"
 
 
 # 4-index Notation (Leap-frog)
 export time_evolve!
-function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
+#We use Leap-Frog: Position Verlet (LFPV) method to time evolve the system.
+#Position: refers to fields (i.e. ψ(t)) , Velocity: refers to time derivatives (i.e. dψdt(t))
+#LFPV first shifts the "position" to a half-integer time step with 
+#half Euler step (integrating to t+1/2 using velocity at time t - forward finite diff.)
+#Next, the "velocity" is leaped forward a full time step with 
+#full Euler step using the midpoint(t+1/2) "position" calculated in the previous step.
+#Then evolve the "position" back to an integer time-step using half-Euler now using "velocity" at the t+1 step.
+function time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
 
     #Snapshotting interval
-    if round(nt/nsnaps,RoundDown) == 0
-        snapInterval = 1
-        println("---Caution: Number of time steps is smaller than snaps!---")
-        println("Instead of ",nsnaps," snapshots, ",nt," snaps will be taken.","---")
-    else
-        snapInterval = round(Int,nt/nsnaps,RoundDown)
-        if nt/nsnaps != snapInterval
-            actualSnaps=round(Int,nt/snapInterval,RoundDown)
-            println("---Caution: Number of snapshots are not multiple of time steps.")
-            println("Instead of ",nsnaps," snapshots, ",actualSnaps," snaps will be taken.","---")
+    if myrank==0
+        #Snapshotting interval
+        if round(nt/nsnaps,RoundDown) == 0
+            println("---Caution: Number of time steps is smaller than snaps!---")
+            println("Instead of ",nsnaps," snapshots, ",nt," snaps will be taken.","---")
+        else
+            if nt/nsnaps != snapInterval
+                actualSnaps=round(Int,nt/snapInterval,RoundDown)
+                println("---Caution: Number of snapshots are not multiple of time steps.")
+                println("Instead of ",nsnaps," snapshots, ",actualSnaps," snaps will be taken.","---")
+            end
         end
+
+        ϕdataIO = open("data/phi.dat","w") 
+        ψdataIO = open("data/psi.dat","w")
+        energyIO = open("data/energy.dat","w")
+        ZedIO = open("data/energies/ZED.dat","w")
     end
 
-    ϕdataIO = open("data/phi.dat","w") 
-    ψdataIO = open("data/psi.dat","w")
-    energyIO = open("data/energy.dat","w")
-    ZedIO = open("data/energies/ZED.dat","w")
 
-
+    MPI.Barrier(comm)
     for t=1:nt
-        
-        #Move a time step
-        @everywhere workers() half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
-        @everywhere workers() update_Paddings(2)
-        @everywhere workers() begin
-            leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,($meanSqrRenorm))
-            half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,2)
+
+        #Move a time step#!need synchronization
+        half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
+        MPI.Barrier(comm)
+        update_Paddings!(ϕ,ψ,Z,2)
+        leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
+        half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,2)
         #Shift next time values to present time for the next step
-            updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
-        end
+        updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
 
-
-
+        
         # Take a snap
         if mod(t,snapInterval) == 0
-            #Calculate energy
-            totalE = energy(ZED_gl,meanSqrRenorm,zPE)
-            
 
-            #Update global fields for recording
-            for i=2:nprocs()
-                lx_p, rx_p, ly_p, ry_p = chunker(i) #_p: physical
-                ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ϕ[lx_l:rx_l,
-                                                                    ly_l:ry_l,1] 
-                ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ψ[lx_l:rx_l,
-                                                                    ly_l:ry_l,1] 
+            totalE = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
+
+            recvbuff_ψ = @views MPI.gather(ψ[padd+1:padd+Nx_loc,padd+1:padd+Ny_loc,1], comm; root=0)
+            recvbuff_ϕ = @views MPI.gather(ϕ[padd+1:padd+Nx_loc,padd+1:padd+Ny_loc,1], comm; root=0)
+            if myrank==0
+                for rank=0:nprocs-1
+                    lx_loc , rx_loc, ly_loc, ry_loc = chunker(rank)
+                    ϕ_loc = recvbuff_ϕ[rank+1]
+                    ψ_loc = recvbuff_ψ[rank+1]
+        
+                    Main.ϕ_gl[lx_loc:rx_loc,ly_loc:ry_loc] .= ϕ_loc[:,:]
+                    Main.ψ_gl[lx_loc:rx_loc,ly_loc:ry_loc] .= ψ_loc[:,:]
+                end
+
+                writedlm(ϕdataIO, @views Main.ϕ_gl[:,:])
+                writedlm(ψdataIO, @views Main.ψ_gl[:,:])
+                writedlm(energyIO,totalE)
+                writedlm(ZedIO,Main.ZED_gl)
+        
+                #!
+                #check constraints
+                # @views constraints_checker(Z[:,:,1],dZdt[:,:,1])
+                # @views conserved_checker(Z[:,:,1],dZdt[:,:,1])
             end
-
-            #Record field and energy data
-            writedlm(ϕdataIO, ϕ_gl[:,:])
-            writedlm(ψdataIO, ψ_gl[:,:])
-            writedlm(energyIO,totalE)
-            writedlm(ZedIO,ZED_gl)
-
-            #!
-            #Check constraints
-            # Z_gl_f = mapZTo2Index(Z_gl[:,:,:,:])
-            # dZdt_gl_f = mapZTo2Index(dZdt_gl[:,:,:,:])
-            # @views constraints_checker(Z_gl_f,dZdt_gl_f)
-            # @views conserved_checker(Z_gl_f,dZdt_gl_f)
-        end 
+        end
     end
-    
 end
 
 
-@everywhere function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
+function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
     dt_half =dt/2   #!not sure yet if i wanna keep them. harder to read.
     for j=padd+1:Nx_loc+padd
         for k=padd+1:Ny_loc+padd
-            ϕ[j,k,2] = ϕ[j,k,t] + dt_half*( dϕdt[j-padd,k-padd,t] ) 
-            ψ[j,k,2] = ψ[j,k,t] + dt_half*( dψdt[j-padd,k-padd,t] )
+            ϕ[j,k,2] = ϕ[j,k,t] + dt_half*( dϕdt[j,k,t] ) 
+            ψ[j,k,2] = ψ[j,k,t] + dt_half*( dψdt[j,k,t] )
             for l=1:Nx
                 for m=1:Ny
-                    Z[j,l,k,m,2] = Z[j,l,k,m,t] + dt_half*( dZdt[j-padd,l,k-padd,m,t] )
+                    Z[j,l,k,m,2] = Z[j,l,k,m,t] + dt_half*( dZdt[j,l,k,m,t] )
                 end
             end
         end
@@ -107,18 +120,19 @@ end
 end
 
 
-@everywhere function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
+function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
+
     for j=padd+1:Nx_loc+padd
         for k=padd+1:Ny_loc+padd
             #Calculate fluxes for ϕ and ψ
             ϕ_flux , ψ_flux =  @views fluxes_ϕ_ψ(ϕ[:,:,2],ψ[:,:,2],Z[:,:,:,:,2],meanSqrRenorm,j,k)
-            dϕdt[j-padd,k-padd,2] = dϕdt[j-padd,k-padd,1] + dt*( ϕ_flux )
-            dψdt[j-padd,k-padd,2] = dψdt[j-padd,k-padd,1] + dt*( ψ_flux )
+            dϕdt[j,k,2] = dϕdt[j,k,1] + dt*( ϕ_flux )
+            dψdt[j,k,2] = dψdt[j,k,1] + dt*( ψ_flux )
             for l=1:Nx
                 for m=1:Ny
                     # @views Z_flux = flux_Z(ϕ[j,k,1],ψ[j,k,1],Z[:,l,:,m,1],j,k,nnl_x,nnr_x,nnl_y,nnr_y)
                     Z_flux = flux_Z(ϕ,ψ,Z,j,l,k,m)
-                    dZdt[j-padd,l,k-padd,m,2] = dZdt[j-padd,l,k-padd,m,1] + dt*( Z_flux )
+                    dZdt[j,l,k,m,2] = dZdt[j,l,k,m,1] + dt*( Z_flux )
                 end
             end
         end
@@ -126,7 +140,7 @@ end
 
 end
 
-@everywhere function fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k)
+@inline function fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k)
     #2-point function
     meanSqr_Rho = @views sum(abs2, Z[j,:,k,:]) #!i need to check if this is the same as 2-index notation.
 
@@ -139,14 +153,13 @@ end
 return ϕ_flux ,ψ_flux
 end
 
-@everywhere function flux_Z(ϕ,ψ,Z,j,l,k,m)
+function flux_Z(ϕ,ψ,Z,j,l,k,m)
     Z_flux = ( (Z[j+1,l,k,m,2] - 2Z[j,l,k,m,2] + Z[j-1,l,k,m,2])/dx^2 
-             + (Z[j,l,k+1,m,2] - 2Z[j,l,k,m,2] + Z[j,l,k-1,m,2])/dy^2
-             - ( m_ρ^2 + α*abs2(ϕ[j,k,2]) + β*ψ[j,k,2]^2 ) * Z[j,l,k,m,2] )
+            + (Z[j,l,k+1,m,2] - 2Z[j,l,k,m,2] + Z[j,l,k-1,m,2])/dy^2
+            - ( m_ρ^2 + α*abs2(ϕ[j,k,2]) + β*ψ[j,k,2]^2 ) * Z[j,l,k,m,2] )
 end
 
-@everywhere function updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
-    #Shift time coordinates
+function updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
     @views begin
         ϕ[:,:,1] .= ϕ[:,:,2]
         ψ[:,:,1] .= ψ[:,:,2]
@@ -157,7 +170,10 @@ end
     end
 end
 
-# 2-index notation (Leap-Frog)
+end #module
+
+
+# 2-Index Notation -- Version 2
     # export time_evolve!
     # #We use Leap-Frog: Position Verlet (LFPV) method to time evolve the system.
     # #Position: refers to fields (i.e. ψ(t)) , Velocity: refers to time derivatives (i.e. dψdt(t))
@@ -328,13 +344,13 @@ end
     # #     # write(ψJLD,"snapshot_$count",ψ[:,:,0])#!
     # # end
 
-    # end #module
+    # end
 
 
 
 
 
-# #Crank-Nicolson Method
+# #Crank-Nicolson Method -- Version 3
     # export time_evolve!
     # function time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
 
@@ -557,6 +573,9 @@ end
     #     dZdt[:,:,1] .= dZdt[:,:,2]
     # end 
 
-# end
+    # end #module
 
-end #module
+
+
+
+

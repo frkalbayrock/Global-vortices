@@ -12,7 +12,7 @@ export flattenDimension
 #[CQC in 1d gives a matrix but 2d gives a 4-index object (not a tensor)]
 function flattenDimension(f)
 
-    # #-Version 1
+    # #-Version 1 #!not updated for MPI
         # #Check if the incoming field is real or complex for memory purposes(we define f_s accordingly)
         # if eltype(f) == Float64
         #     # f_s = zeros(Nx*Ny)          #"s" stands for single
@@ -46,16 +46,17 @@ function ravelDimension(f)
 
     #Check if the incoming field is real or complex for memory purposes(we define f_s accordingly)
     if eltype(f) == Float64
-        f_t = Array{Float64,2}(undef, Nx,Ny)    #"t" stands for "two-index"
+        f_t = Array{Float64,2}(undef, Nx_local,Ny_local)    #"t" stands for "two-index"
     elseif eltype(f) == ComplexF64
-        f_t = Array{ComplexF64,2}(undef, Nx,Ny)
+        f_t = Array{ComplexF64,2}(undef, Nx_local,Ny_local)
     else
         println("---> Error: given type not float or complex float.")
         println(typeof(f))
         # print("---> Error: given type not float or complex float.\n")
         # print(typeof(f),"\n")
     end
-    f_t = OffsetArray(f_t,lx:rx,ly:ry)
+    #!-----------not update for MPI yet----------v
+    f_t = OffsetArray(f_t,lx:rx,ly:ry) 
 
     for J=1:N^2
         j,k=oneIndexToTwo(J)
@@ -70,29 +71,23 @@ export mapZTo4Index
 #It takes the flattened Z_JK (or dZdt_JK) values and maps them to Z_jlkm (or dZdt_jlkm)
 #where 'j' and 'k' are for space coordinates and 'l' and 'm' are the auxillary indices for CQC.
 function mapZTo4Index(ZordZ)
-
+    
     #!
     if eltype(ZordZ) == Float64
-            ZordZ_t = Array{Float64,4}(undef, Nx,Nx,Ny,Ny)    #"s" stands for single
-        elseif eltype(ZordZ) == ComplexF64
-            ZordZ_t = Array{ComplexF64,4}(undef, Nx,Nx,Ny,Ny)
-        else
-            println("Error: given type not float or complex float.")
+        ZordZ_t = Array{Float64,4}(undef, Nx,Nx,Ny,Ny)    #"s" stands for single
+    elseif eltype(ZordZ) == ComplexF64
+        ZordZ_t = Array{ComplexF64,4}(undef, Nx,Nx,Ny,Ny)
+    else
+        println("Error: given type not float or complex float.")
     end
     #!
-    # ZordZ_t = im*zeros(Nx,Nx,Ny,Ny) #t stands for "two-index" for each given index (i.e. j,k <- J)#!
-    # ZordZ_t = OffsetArray(ZordZ_t,lx:rx,lx:rx,ly:ry,ly:ry)#! ***** turn this on when you remove the bottom red warning.
+    # ZordZ_t = im*zeros(Nx,Nx,Ny,Ny) #t stands for "two-index" for each given index (i.e. j,k <- J)
+    ZordZ_t = OffsetArray(ZordZ_t,lx:rx,lx:rx,ly:ry,ly:ry)
 
     for J=1:N^2
         for K=1:N^2
             j,k = oneIndexToTwo(J)
             l,m = oneIndexToTwo(K)
-            #! REMOVE THIS ONCE WE ARE DONE USING 4-INDEX OMEGA'S also make sure you turn on **** above
-            j= Int(j+Nx/2)
-            k= Int(k+Ny/2)
-            l= Int(l+Nx/2)
-            m= Int(m+Ny/2)
-            #! 
             ZordZ_t[j,l,k,m] = ZordZ[J,K]
         end
     end
