@@ -21,8 +21,8 @@ using Distributed
 #initialConditions sets the initial conditions for the fields ϕ,ψ,Z and calculates the renormalization factor
 export initialConditions!
 #Set initial conditions for the fields ϕ, ψ, ρ
-function initialConditions!(ϕ_gl,ψ_gl,Z_gl,dZdt_gl)
-
+function initialConditions!(ϕ_gl,ψ_gl)
+    
     #---Set i.c. for ϕ and ψ locally
     @everywhere workers() ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
 
@@ -48,29 +48,42 @@ function initialConditions!(ϕ_gl,ψ_gl,Z_gl,dZdt_gl)
     #4-indexed Z and Ω
     S_Ωzero_f = mapZTo4Index(S_Ωzero)
     inv_S_Ωzero_f = mapZTo4Index(inv_S_Ωzero)
+
+
     #!This part can be done on workers since omega's are now 4-indexed
     #!Then we can skip having a global Z and dZdt
 
-    #Z (ρ) i.c.   
-    Z_gl[:,:,:,:] .= -im/sqrt(2) .* inv_S_Ωzero_f
-    dZdt_gl[:,:,:,:].= 1/sqrt(2) .* S_Ωzero_f
+    # #Z (ρ) i.c.   
+    # Z_gl[:,:,:,:] .= -im/sqrt(2) .* inv_S_Ωzero_f
+    # dZdt_gl[:,:,:,:].= 1/sqrt(2) .* S_Ωzero_f
 
 
-    #---Chunk Z and send it to workers
-    @everywhere workers() begin
-        lx_p, rx_p, ly_p, ry_p = chunker(myid())
-        lx_p = Int(Nx/2+lx_p)
-        rx_p = Int(Nx/2+rx_p)
-        ly_p = Int(Ny/2+ly_p)
-        ry_p = Int(Ny/2+ry_p)
+    # #---Chunk Z and send it to workers
+    # @everywhere workers() begin
+    #     lx_p, rx_p, ly_p, ry_p = chunker(myid())
+    #     lx_p = Int(Nx/2+lx_p)
+    #     rx_p = Int(Nx/2+rx_p)
+    #     ly_p = Int(Ny/2+ly_p)
+    #     ry_p = Int(Ny/2+ry_p)
 
-        Z[padd+1:Nx_loc+padd,:,
-            padd+1:Ny_loc+padd,:,1] .= ($Z_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
+    #     Z[padd+1:Nx_loc+padd,:,
+    #         padd+1:Ny_loc+padd,:,1] .= ($Z_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
+    #     dZdt[:,:,:,:,1]             .= ($dZdt_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
+    # end
 
-        # dZdt[padd+1:Nx_loc+padd,:,
-        #     padd+1:Ny_loc+padd,:,1] .= ($dZdt_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
-        dZdt[:,:,:,:,1] .= ($dZdt_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
-    end
+    
+        #---Chunk Z and send it to workers
+        @everywhere workers() begin
+            lx_p, rx_p, ly_p, ry_p = chunker(myid())
+            lx_p = Int(Nx/2+lx_p)
+            rx_p = Int(Nx/2+rx_p)
+            ly_p = Int(Ny/2+ly_p)
+            ry_p = Int(Ny/2+ry_p)
+    
+            Z[padd+1:Nx_loc+padd,:,
+                padd+1:Ny_loc+padd,:,1] .= -im/sqrt(2) .* ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
+            dZdt[:,:,:,:,1]             .= 1/sqrt(2)   .* ($S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
+        end
     
   
 
@@ -104,6 +117,9 @@ end
     vy=0.4
     r0=1.25
     γ=1/sqrt(1-(vx^2+vy^2))
+    #!fluctuations
+    κ=2*2pi/L
+    f_amp = 0.25
 
     #ϕ and ψ i.c.
     for j in padd+1:Nx_loc+padd
@@ -114,7 +130,8 @@ end
             y = (ly_p+(k-padd)-1)*dy
             y1 = y-r0
             y2 = y+r0
-            ϕ[j,k,1] = η
+            δϕ = f_amp*sin(κ*x)sin(κ*y) 
+            ϕ[j,k,1] = η #+ im*δϕ
             dϕdt[j-padd,k-padd,1] = 0
             ψ[j,k,1] = amp*(exp( -width/(vx^2 + vy^2)
                                * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )       
@@ -226,6 +243,8 @@ function omegaIC(ϕ_s,ψ_s)
 
 
     #Version 2 #!---> seems to be slower at the N=3 test (but for N=60,70 got faster and uses less ram!)
+    S_Ωzero = zeros(N^2,N^2)
+    inv_S_Ωzero = zeros(N^2,N^2)
     S_Ωzero = sqrt(sqrt(Ω))  #S_ stands for square root
     inv_S_Ωzero = inv(S_Ωzero)
 
@@ -273,10 +292,10 @@ function zeroPointEnergy()
     pEZRen = 0.
     for l=1:Nx
         for m=1:Ny
-            kEZRen = kEZRen + ( abs2( dZdt_partial[l,m] ) )/2
-            gEZRen = gEZRen + ( abs2( (Z_partial[2,l,2,m] - Z_partial[1,l,2,m])/dx ) 
+            kEZRen +=  ( abs2( dZdt_partial[l,m] ) )/2
+            gEZRen +=  ( abs2( (Z_partial[2,l,2,m] - Z_partial[1,l,2,m])/dx ) 
                                 + abs2( (Z_partial[2,l,2,m] - Z_partial[2,l,1,m])/dy ) )/2
-            pEZRen = pEZRen + m_ρ^2*( abs2(Z_partial[2,l,2,m,1]) )/2
+            pEZRen +=  m_ρ^2*( abs2(Z_partial[2,l,2,m,1]) )/2
         end
     end
     zPE = (kEZRen+gEZRen+pEZRen)/(dx*dy)

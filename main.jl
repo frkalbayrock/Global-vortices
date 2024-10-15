@@ -11,12 +11,14 @@ include("Auxiliary.jl")
 include("IndexMap.jl")
 include("Evolution.jl")
 include("Constraints.jl")
+include("FindVortex.jl")
 using .IC
 using .Energy
 using .Auxiliary_Routines
 using .IndexMap
 using .Time_Evolution
 using .Constraints_Conserveds
+using .FindVortex
 using OffsetArrays
 using DelimitedFiles
 using Plots; pythonplot()
@@ -50,12 +52,6 @@ end
     #Standards:  ϕ and ψ are in 2D lattice // Z can be on the flattened 1D N^2 lattice or native 2D lattice
     const ϕ_gl = OffsetArray(im*zeros(Nx, Ny),lx:rx,ly:ry)
     const ψ_gl = OffsetArray(zeros(Nx, Ny),lx:rx,ly:ry)
-    #2-index Z
-    # Z_gl =    Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #!WE PROBABLY DONT NEED TO DEFINE THESE HERE 
-    # dZdt_gl = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #!NO, Z would be a problem. MAYBE NOT.......
-    #4-index Z
-    const Z_gl =    Array{ComplexF64,4}(undef, Nx, Nx, Ny, Ny)
-    const dZdt_gl = Array{ComplexF64,4}(undef, Nx, Nx, Ny, Ny)
     const ZED_gl = OffsetArray(zeros(Nx,Ny),lx:rx,ly:ry)
 
 
@@ -100,7 +96,7 @@ function run_ev()
 
 
     #----Initial Conditions----#
-    @time initialConditions!(ϕ_gl,ψ_gl,Z_gl,dZdt_gl)
+    @time initialConditions!(ϕ_gl,ψ_gl)
 
     #Record initial conditions
     writedlm(ioϕ,ϕ_gl[:,:])
@@ -129,6 +125,9 @@ function run_ev()
     #----Time Evolution----#
     @time time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
 
+
+    #----Check for Vortices----#
+    vortex_finder(ϕ_gl)
  
     #Close data files
     close(ioϕ)
@@ -138,6 +137,7 @@ end
 
 @time run_ev()
 rmprocs(workers())
+println("Removing workers done.")
 #END OF CODE
 
 

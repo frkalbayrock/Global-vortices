@@ -1,5 +1,32 @@
 # CHANGELOG
 
+#### v0.3.6
+All the changes listed:
+Auxiliary.jl:
+- For the parallel functions' arguments, the types are added for performance improvement. 
+- update_Padddings() returns nothing now. Before it was accidently returning the last line which had some performance hit.
+- getData functions' if statements covers everything now; else added with error statement.
+Evolution.jl:
+- 
+IC.jl:
+- Z_gl and dZdt_gl is removed from arguments and local Z's are now calcualted directly from the omega matrices.
+- Fluctuations are added for the field ϕ
+- Small synhtatic updates.
+- S_Ωzero, inv_S_Ωzero are now created first with zeros earlier, then updated with sqrt()'s etc.
+main.jl:
+- Z_gl and dZdt_gl is no longer created. We set local Z's directly on the workers now using 4-index omega matrices.
+- Vortex finder is called after time_evolution()
+Parameters.jl:
+- lx, rx are defined with Int() rather than Int.16() for performance reasons.
+- dt_half is defined here for performance.
+
+Newly added modules
+- FindVortex.jl : finds the vortices based on winding number calculated at each plaquette.
+
+Next stage: 
+It seems we still have performance issues; possibly due to the way the parallelization is done. Cluster runs show that there is an enormous read and write operations happening. The testing shows that it is due to the parallelization macros. Needs further looking into. 
+DistributedArrays might be the only option way forward.
+
 #### v0.3.5
 Various small improvements and changes on the parallel-julia code. 
 

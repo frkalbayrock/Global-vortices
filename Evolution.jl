@@ -91,21 +91,29 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
 end
 
 
+# @everywhere function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
+#     dt_half =dt/2   #!not sure yet if i wanna keep them. harder to read.
+#     for j=padd+1:Nx_loc+padd
+#         for k=padd+1:Ny_loc+padd
+#             ϕ[j,k,2] = ϕ[j,k,t] + dt_half*( dϕdt[j-padd,k-padd,t] ) 
+#             ψ[j,k,2] = ψ[j,k,t] + dt_half*( dψdt[j-padd,k-padd,t] )
+#             for l=1:Nx
+#                 for m=1:Ny
+#                     Z[j,l,k,m,2] = Z[j,l,k,m,t] + dt_half*( dZdt[j-padd,l,k-padd,m,t] )
+#                 end
+#             end
+#         end
+#     end
+# end
+
 @everywhere function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
-    dt_half =dt/2   #!not sure yet if i wanna keep them. harder to read.
-    for j=padd+1:Nx_loc+padd
-        for k=padd+1:Ny_loc+padd
-            ϕ[j,k,2] = ϕ[j,k,t] + dt_half*( dϕdt[j-padd,k-padd,t] ) 
-            ψ[j,k,2] = ψ[j,k,t] + dt_half*( dψdt[j-padd,k-padd,t] )
-            for l=1:Nx
-                for m=1:Ny
-                    Z[j,l,k,m,2] = Z[j,l,k,m,t] + dt_half*( dZdt[j-padd,l,k-padd,m,t] )
-                end
-            end
-        end
+    # dt_half =dt/2
+    @views begin
+    ϕ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,2] .= ϕ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,t] + dt_half*( dϕdt[:,:,t] ) 
+    ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,2] .= ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,t] + dt_half*( dψdt[:,:,t] )
+    Z[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:,2] .= Z[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:,t] + dt_half*( dZdt[:,:,:,:,t] )
     end
 end
-
 
 @everywhere function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
     for j=padd+1:Nx_loc+padd
