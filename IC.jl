@@ -54,42 +54,35 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
         S_Ωzero_f = mapZTo4Index(S_Ωzero)
         inv_S_Ωzero_f = mapZTo4Index(inv_S_Ωzero)
 
-        #!
-        #Z (ρ) i.c.
-        Z_gl = OffsetArray(Array{ComplexF64,4}(undef, Nx, Nx, Ny, Ny), lx:rx,lx:rx, ly:ry, ly:ry)
-        dZdt_gl = OffsetArray(Array{ComplexF64,4}(undef, Nx, Nx, Ny, Ny), lx:rx,lx:rx, ly:ry, ly:ry)
-        Z_gl .= -im/sqrt(2) .* inv_S_Ωzero_f
-        dZdt_gl .= 1/sqrt(2) .* S_Ωzero_f
     end
+
 
     #Distribute Z for domain decomposition
     if myrank==0
-        @views Z[lx_l:rx_l,:,
-          ly_l:ry_l,:,1]    = Z_gl[lx_p:rx_p,:,ly_p:ry_p,:]
-        @views dZdt[lx_l:rx_l,:,
-             ly_l:ry_l,:,1] = dZdt_gl[lx_p:rx_p,:,ly_p:ry_p,:]
+        @views Z[lx_l:rx_l,:,ly_l:ry_l,:,1]    = -im/sqrt(2) .* inv_S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
+        @views dZdt[lx_l:rx_l,:,ly_l:ry_l,:,1] =   1/sqrt(2) .* S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
 
         #---Send Z
         for idp=1:nprocs-1
              #Find the chunks location in the global
             lx_loc, rx_loc, ly_loc, ry_loc = chunker(idp)
-            MPI.Send(Z_gl[lx_loc:rx_loc,:,ly_loc:ry_loc,:].parent, comm; dest=idp, tag=1)
+            MPI.Send(inv_S_Ωzero_f[lx_loc:rx_loc,:,ly_loc:ry_loc,:].parent, comm; dest=idp, tag=1)
         end
         #---Send dZdt
         for idp=1:nprocs-1
             #Find the chunks location in the global
             lx_loc, rx_loc, ly_loc, ry_loc = chunker(idp)
-            MPI.Send(dZdt_gl[lx_loc:rx_loc,:,ly_loc:ry_loc,:].parent, comm; dest=idp, tag=2)
+            MPI.Send(S_Ωzero_f[lx_loc:rx_loc,:,ly_loc:ry_loc,:].parent, comm; dest=idp, tag=2)
         end
         
     else
-        recvdata = im*zeros(Nx_loc,Nx,Ny_loc,Ny)
+        recvdata = zeros(Nx_loc,Nx,Ny_loc,Ny)
         MPI.Recv!(recvdata,comm; source=0,tag=1)
         Z[lx_l:rx_l,:,
-          ly_l:ry_l,:,1] .= recvdata
+          ly_l:ry_l,:,1] .= -im/sqrt(2) .* recvdata
         MPI.Recv!(recvdata,comm; source=0,tag=2)
         dZdt[lx_l:rx_l,:,
-             ly_l:ry_l,:,1] .= recvdata
+             ly_l:ry_l,:,1] .= 1/sqrt(2) .* recvdata
     end
 
 

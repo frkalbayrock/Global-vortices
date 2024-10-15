@@ -1,5 +1,8 @@
 # CHANGELOG
 
+#### v.0.3.8
+MPI Code updated --> Z_gl and dZdt_gl are no longer defined. Should improve memory usage.
+
 #### v0.3.6
 Parallelization done using MPI with a major change in the structure change of the whole code.
 Results match exactly with serial and the julia-parallel version. 
