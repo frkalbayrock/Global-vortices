@@ -1,7 +1,7 @@
 module Parameters
 export dx,dy,dt,N,Nx,Ny,L,lx,rx,ly,ry,nt,nsnaps, dt_half
 export λ,α,β,η,m_ρ,m_ϕ,m_ψ
-export nprocs_perdim,Nx_loc,Ny_loc,padding_size,padd
+export nprocs_perdim,Nx_loc,Ny_loc,Nx_padd,Ny_padd,padding_size,padd
 export lx_l,rx_l,ly_l,ry_l 
 
 #--Lattice Parameters
@@ -41,6 +41,9 @@ const Ny_loc = Int(Ny/nprocs_perdim[2])
 #Padding to be added on top of the physical sizes
 const padding_size = 2 #depends on the order of derivatives
 const padd = Int(padding_size/2) #padding_perside
+#Distributed Array Sizes with Padding
+const Nx_padd = Int(Nx + nprocs_perdim[1]*padding_size)
+const Ny_padd = Int(Ny + nprocs_perdim[2]*padding_size)
 #Physically useful ends of local padded arrays
 const lx_l = padd + 1
 const rx_l = padd + Nx_loc

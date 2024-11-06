@@ -1,13 +1,33 @@
 # CHANGELOG
 
-#### v0.3.6
+#### v0.3.9 - DistributedArrays
+Complete new version of parallelization using DistributedArrays.jl package
+---Still work in progress---
+
 All the changes listed:
+Auxiliary.jl:
+- distChunker() created. Finds the (end) coordinates of arrays of local chunks in the global lattice based on their proc id. Same as chunker() but without the "Offset".
+FindVortex.jl:
+- Updated for recording the positions of vortices and anti-vortices and returns them.
+IC.jl:
+- localpart(f) is used to let the initial conditions for ϕ and ψ. ϕ_gl and ψ_gl is defined for matrix calculations of initial Z's. Later Z is initialized chunk-wise with the "global" omega matrices.
+- Overall indices is changed since DistibutedArrays doesn't support Offset'ting.
+Main.jl:
+- All the arrays are now defined with indices starting 1. Offset's are now turned off.
+Parameters.jl:
+- New padded lattice sizes defined for DistributedArray's: Nx_padd,Ny_padd.
+
+
+#### v.0.3.8
+MPI Code updated --> Z_gl and dZdt_gl are no longer defined. Should improve memory usage.
+
+#### v0.3.6
+All the changes listed
 Auxiliary.jl:
 - For the parallel functions' arguments, the types are added for performance improvement. 
 - update_Padddings() returns nothing now. Before it was accidently returning the last line which had some performance hit.
 - getData functions' if statements covers everything now; else added with error statement.
 Evolution.jl:
-- 
 IC.jl:
 - Z_gl and dZdt_gl is removed from arguments and local Z's are now calcualted directly from the omega matrices.
 - Fluctuations are added for the field ϕ

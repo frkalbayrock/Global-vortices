@@ -77,6 +77,35 @@ end
 
 
 
+export distChunker
+function distChunker(proc_id::Int)
+    
+    #Cartesian coordinate of the chunk
+    i_procs, j_procs = chunk_cart(proc_id)
+
+    #Global coordinates of the ends of the chunks 
+    lx_loc = Int((Nx_loc * i_procs +1))
+    rx_loc = Int(lx_loc + Nx_loc -1)
+    ly_loc = Int((Ny_loc * j_procs +1))
+    ry_loc = Int(ly_loc + Ny_loc - 1)
+
+return lx_loc, rx_loc, ly_loc, ry_loc
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 export chunker
 function chunker(proc_id::Int)

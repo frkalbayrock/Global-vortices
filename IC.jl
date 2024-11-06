@@ -12,6 +12,7 @@ using .Auxiliary_Routines
 #!
 using OffsetArrays
 using Distributed
+using DistributedArrays
 #!
 @everywhere using Profile
 @everywhere using PProf
@@ -21,19 +22,30 @@ using Distributed
 #initialConditions sets the initial conditions for the fields ϕ,ψ,Z and calculates the renormalization factor
 export initialConditions!
 #Set initial conditions for the fields ϕ, ψ, ρ
-function initialConditions!(ϕ_gl,ψ_gl)
+function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
+
+
+    
+    # anan = [@fetchfrom p localindices(ψ) for p in workers()]
+    # @show  anan
+
     
     #---Set i.c. for ϕ and ψ locally
-    @everywhere workers() ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
+    # @everywhere workers() ic_ϕ_ψ!()#(ϕ,ψ,dϕdt,dψdt)
+    # @everywhere workers() ic_ϕ_ψ!(localpart(ϕ),localpart(ψ))
+    @sync @distributed for _ in workers()
+        ic_ϕ_ψ!(localpart(ϕ),localpart(ψ),localpart(dϕdt),localpart(dψdt))
+    end
+    # anan= [@fetchfrom  p size(localpart(ψ)) for p in workers()]
+    # @show anan
 
     #---Collect ϕ and ψ to global fields for Ω calculation
-    for i=2:nprocs()
-        lx_p, rx_p, ly_p, ry_p = chunker(i) #_p: physical
-        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ϕ[padd+1:Nx_loc+padd,
-                                                        1+padd:padd+Ny_loc,1] 
-        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ψ[padd+1:Nx_loc+padd,
-                                                        1+padd:padd+Ny_loc,1] 
+    for p in workers()
+        lx_p, rx_p, ly_p, ry_p = distChunker(p)
+        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
+        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Ny_loc+padd,1+padd:Ny_loc+padd,1]
     end
+
 
     #---Calculate Ω
     #2-index to 1-index mapping
@@ -71,22 +83,20 @@ function initialConditions!(ϕ_gl,ψ_gl)
     #     dZdt[:,:,:,:,1]             .= ($dZdt_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
     # end
 
-    
-        #---Chunk Z and send it to workers
-        @everywhere workers() begin
-            lx_p, rx_p, ly_p, ry_p = chunker(myid())
-            lx_p = Int(Nx/2+lx_p)
-            rx_p = Int(Nx/2+rx_p)
-            ly_p = Int(Ny/2+ly_p)
-            ry_p = Int(Ny/2+ry_p)
-    
-            Z[padd+1:Nx_loc+padd,:,
-                padd+1:Ny_loc+padd,:,1] .= -im/sqrt(2) .* ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-            dZdt[:,:,:,:,1]             .= 1/sqrt(2)   .* ($S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-        end
+    @sync @distributed for p in workers()
+        @show p
+    end
+
+    #---Chunk Z and send it to workers
+    @sync @distributed for p in workers()
+        lx_p, rx_p, ly_p, ry_p = distChunker(p)
+        localpart(Z)[padd+1:Nx_loc+padd,:,
+                     padd+1:Ny_loc+padd,:,1] .= -im/sqrt(2) .* inv_S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
+        localpart(dZdt)[:,:,:,:,1]           .= 1/sqrt(2)   .* S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
+    end
+
     
   
-
     # #!Test by collecting back what we sent and recording
     # Z_test = im*zeros(Nx,Nx,Ny,Ny)
     # for i in 2:nprocs()
@@ -105,10 +115,12 @@ function initialConditions!(ϕ_gl,ψ_gl)
 end
 
 
-@everywhere workers() function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
+# @everywhere workers() 
+function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
 
     #Find the chunk's physical coordinates and physical ends
-    lx_p, rx_p, ly_p, ry_p = chunker(myid())
+    lx_p, rx_p, ly_p, ry_p = distChunker(myid())
+
 
     #ψ parameters
     width=2.0
@@ -122,24 +134,24 @@ end
     f_amp = 0.25
 
     #ϕ and ψ i.c.
-    for j in padd+1:Nx_loc+padd
-        x = (lx_p+(j-padd)-1)*dx
+    for j in 1+padd:Nx_loc+padd
+        x = ((lx_p-Nx/2)+(j-padd)-1)*dx
         x1 = x-r0
         x2 = x+r0
-        for k=padd+1:Ny_loc+padd
-            y = (ly_p+(k-padd)-1)*dy
+        for k in 1+padd:Ny_loc+padd
+            y = ((ly_p-Ny/2)+(k-padd)-1)*dy
             y1 = y-r0
             y2 = y+r0
-            δϕ = f_amp*sin(κ*x)sin(κ*y) 
+            δϕ = f_amp*sin(κ*x)sin(κ*y)
             ϕ[j,k,1] = η #+ im*δϕ
             dϕdt[j-padd,k-padd,1] = 0
             ψ[j,k,1] = amp*(exp( -width/(vx^2 + vy^2)
                                * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )       
                           + exp( -width/(vx^2 + vy^2) 
-                             * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
+                               * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
             dψdt[j-padd,k-padd,1] = ( 2amp *width *γ^2 *(x1 *(-vx) + y1 *(-vy)) 
                             *exp(-width/(vx^2 + vy^2) * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1 *(-vy))^2 * γ^2 ))
-                            + 2amp *width *γ^2 *(x2 *(vx) + y2 *(vy)) 
+                                    + 2amp *width *γ^2 *(x2 *(vx) + y2 *(vy)) 
                             *exp(-width/(vx^2 + vy^2) * ( (x2 *(vy) - y2 *(vx))^2 + (x2* (vx) + y2 *(vy))^2 * γ^2 ))    )
         end
     end
