@@ -85,11 +85,11 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
             if length(vortex_pos) != length(anti_vortex_pos)
                 error("Number of vortices doesn't match anti-vortices!")
             elseif (length(vortex_pos)==0 && length(anti_vortex_pos)==0)
-                println(io2,"[]")   #vortex 
-                println(io2,"[]")   #anti-vortex
+                println(vortexIO,"[]")   #vortex 
+                println(vortexIO,"[]")   #anti-vortex
             else
-                println(io2,vortex_pos)         #vortex
-                println(io2,anti_vortex_pos)    #anti-vortex
+                println(vortexIO,vortex_pos)         #vortex
+                println(vortexIO,anti_vortex_pos)    #anti-vortex
             end
 
             #Record field and energy data
