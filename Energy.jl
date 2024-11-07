@@ -9,8 +9,8 @@ using OffsetArrays
 #!
 @everywhere using Profile, PProf
 
-export energy
-function energy(ZED,meanSqrRenorm,zPE)
+export energy!
+function energy!(ZED,meanSqrRenorm,zPE)
 
     #--Update the paddings before calculating energy
     @everywhere workers() update_Paddings(1)

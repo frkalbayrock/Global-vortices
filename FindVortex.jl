@@ -10,9 +10,12 @@ function vortex_finder(ϕ)
 
     vortex_count = 0
     anti_vortex_count = 0
+    vortex_pos = Vector{Tuple{Int,Int}}()
+    anti_vortex_pos = Vector{Tuple{Int,Int}}()
     #Go over each of the plaquettes:
     for j=lx:rx-1
         for k=ly:ry-1
+
            
             #extract the phase
             θ = zeros(4)
@@ -27,26 +30,24 @@ function vortex_finder(ϕ)
             tolerance = 0.01
             #Check if the winding is a multiple of 2π
             if 1-tolerance  < wind < 1+tolerance
-                println("Found a vortex!")
+                push!(vortex_pos,(j,k))
                 vortex_count += 1
             elseif -1-tolerance  < wind < -1+tolerance
-                println("Found an anti-vortex!")
+                push!(anti_vortex_pos,(j,k))
                 anti_vortex_count += 1
-            # else
-                # println("No vortex :(")
             end
 
         end
     end
 
-    if vortex_count > 0  || anti_vortex_count > 0 
+    if vortex_count > 0 || anti_vortex_count > 0 
         println("Number of vortices: ",vortex_count)
         println("Number of anti-vortices: ", anti_vortex_count)
     else
         println("No vortex :(")
     end
 
-
+return vortex_pos, anti_vortex_pos
 end
 
 

@@ -5,12 +5,14 @@ include("Energy.jl")
 include("IndexMap.jl")
 include("Auxiliary.jl")
 include("Constraints.jl")
+include("FindVortex.jl")
 using Distributed
 using .Parameters 
 using .Energy
 using .IndexMap
 using .Auxiliary_Routines
 using .Constraints_Conserveds
+using .FindVortex
 using DelimitedFiles
 using OffsetArrays
 using Profile
@@ -42,6 +44,7 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
     ψdataIO = open("data/psi.dat","w")
     energyIO = open("data/energy.dat","w")
     ZedIO = open("data/energies/ZED.dat","w")
+    vortexIO = open("data/vortices.dat","w")
 
 
     for t=1:nt
@@ -60,8 +63,9 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
 
         # Take a snap
         if mod(t,snapInterval) == 0
+
             #Calculate energy
-            totalE = energy(ZED_gl,meanSqrRenorm,zPE)
+            totalE = energy!(ZED_gl,meanSqrRenorm,zPE)
             
 
             #Update global fields for recording
@@ -71,6 +75,21 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
                                                                     ly_l:ry_l,1] 
                 ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ψ[lx_l:rx_l,
                                                                     ly_l:ry_l,1] 
+            end
+
+
+            #----Check for Vortices----#
+            vortex_pos, anti_vortex_pos = vortex_finder(ϕ_gl)
+
+            #Record vortices
+            if length(vortex_pos) != length(anti_vortex_pos)
+                error("Number of vortices doesn't match anti-vortices!")
+            elseif (length(vortex_pos)==0 && length(anti_vortex_pos)==0)
+                println(io2,"[]")   #vortex 
+                println(io2,"[]")   #anti-vortex
+            else
+                println(io2,vortex_pos)         #vortex
+                println(io2,anti_vortex_pos)    #anti-vortex
             end
 
             #Record field and energy data
@@ -87,6 +106,12 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
             # @views conserved_checker(Z_gl_f,dZdt_gl_f)
         end 
     end
+
+    close(ϕdataIO)
+    close(ψdataIO)
+    close(energyIO)
+    close(ZedIO)
+    close(vortexIO)
     
 end
 

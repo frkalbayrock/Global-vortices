@@ -1,7 +1,22 @@
 # CHANGELOG
 
+#### v0.3.10
+Small changes for parallel-Julia version of the code. Mainly FindVortex module is updated for vortex positions recording. 
+
+All the changes listed  
+Energy.jl:  
+- energy() is now defined energy!()
+Evolution.jl:  
+- vortex_finder() is used during evolution. It now records every snap time rather than just at the end. And the positions are recorded right after into the same file; first vortices written on a line and then the anti-vortices written on the next line. So odd numbered lines are for vortices and evens are for anti-vortices.
+- All the data files used during evolution is closed.
+FindVortex.jl:  
+- vortex_finder(): vortex_pos and anti_votex_pos defined to record the positions of vortex/anti-vortex and returns these vectors to the calling program.
+main.jl:  
+- Initial Z energy density (ZED) is nto recorded into a separate file called "initial_ZED.dat".
+
+
 #### v0.3.6
-All the changes listed:
+All the changes listed:  
 Auxiliary.jl:
 - For the parallel functions' arguments, the types are added for performance improvement. 
 - update_Padddings() returns nothing now. Before it was accidently returning the last line which had some performance hit.

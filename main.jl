@@ -89,9 +89,10 @@ function run_ev()
     println("Number of time steps: ",nt)
     println("Threads: ",Threads.nthreads())#!
     println("Procs: ",nprocs())
-    #Data files
+    #Initial Data files
     ioϕ=open("data/initial_phi.dat","w")
     ioψ=open("data/initial_psi.dat","w")
+    ioZed=open("data/initial_ZED.dat","w")
 
 
 
@@ -116,9 +117,8 @@ function run_ev()
 
 
     #----Initial Energy----#
-    totalE = energy(ZED_gl,meanSqrRenorm,zPE)
-    ZedIO = open("data/energies/ZED.dat","w")
-    writedlm(ZedIO,ZED_gl)
+    totalE = energy!(ZED_gl,meanSqrRenorm,zPE)
+    writedlm(ioZed,ZED_gl)
     println("Total initial energy: ",totalE)
 
 
@@ -127,11 +127,12 @@ function run_ev()
 
 
     #----Check for Vortices----#
-    vortex_finder(ϕ_gl)
+    vortex_pos, anti_vortex_pos = vortex_finder(ϕ_gl)   #!this may not be necessary.
  
     #Close data files
     close(ioϕ)
     close(ioψ)
+    close(ioZed)
 
 end 
 
