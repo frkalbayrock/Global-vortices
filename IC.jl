@@ -7,13 +7,8 @@ include("IndexMap.jl")
 using .IndexMap
 include("Auxiliary.jl")
 using .Auxiliary_Routines
-
-
-#!
-using OffsetArrays
 using Distributed
-using DistributedArrays
-#!
+@everywhere using DistributedArrays
 @everywhere using Profile
 @everywhere using PProf
 @everywhere using DelimitedFiles
@@ -25,19 +20,12 @@ export initialConditions!
 function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
 
 
-    
-    # anan = [@fetchfrom p localindices(ψ) for p in workers()]
-    # @show  anan
-
-    
     #---Set i.c. for ϕ and ψ locally
-    # @everywhere workers() ic_ϕ_ψ!()#(ϕ,ψ,dϕdt,dψdt)
-    # @everywhere workers() ic_ϕ_ψ!(localpart(ϕ),localpart(ψ))
     @sync @distributed for _ in workers()
         ic_ϕ_ψ!(localpart(ϕ),localpart(ψ),localpart(dϕdt),localpart(dψdt))
     end
-    # anan= [@fetchfrom  p size(localpart(ψ)) for p in workers()]
-    # @show anan
+
+
 
     #---Collect ϕ and ψ to global fields for Ω calculation
     for p in workers()
@@ -45,6 +33,7 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
         ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
         ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Ny_loc+padd,1+padd:Ny_loc+padd,1]
     end
+
 
 
     #---Calculate Ω
@@ -62,30 +51,6 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
     inv_S_Ωzero_f = mapZTo4Index(inv_S_Ωzero)
 
 
-    #!This part can be done on workers since omega's are now 4-indexed
-    #!Then we can skip having a global Z and dZdt
-
-    # #Z (ρ) i.c.   
-    # Z_gl[:,:,:,:] .= -im/sqrt(2) .* inv_S_Ωzero_f
-    # dZdt_gl[:,:,:,:].= 1/sqrt(2) .* S_Ωzero_f
-
-
-    # #---Chunk Z and send it to workers
-    # @everywhere workers() begin
-    #     lx_p, rx_p, ly_p, ry_p = chunker(myid())
-    #     lx_p = Int(Nx/2+lx_p)
-    #     rx_p = Int(Nx/2+rx_p)
-    #     ly_p = Int(Ny/2+ly_p)
-    #     ry_p = Int(Ny/2+ry_p)
-
-    #     Z[padd+1:Nx_loc+padd,:,
-    #         padd+1:Ny_loc+padd,:,1] .= ($Z_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
-    #     dZdt[:,:,:,:,1]             .= ($dZdt_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
-    # end
-
-    @sync @distributed for p in workers()
-        @show p
-    end
 
     #---Chunk Z and send it to workers
     @sync @distributed for p in workers()
@@ -95,22 +60,6 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
         localpart(dZdt)[:,:,:,:,1]           .= 1/sqrt(2)   .* S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
     end
 
-    
-  
-    # #!Test by collecting back what we sent and recording
-    # Z_test = im*zeros(Nx,Nx,Ny,Ny)
-    # for i in 2:nprocs()
-    #     lx_p, rx_p, ly_p, ry_p = chunker(i)
-    #     lx_p = Int(Nx/2+lx_p)
-    #     rx_p = Int(Nx/2+rx_p)
-    #     ly_p = Int(Ny/2+ly_p)
-    #     ry_p = Int(Ny/2+ry_p)
-    #     Z_test[lx_p:rx_p,:,ly_p:ry_p,:] .= @fetchfrom i Main.Z[padd+1:padd+Nx_loc,:,
-    #                              padd+1:padd+Ny_loc,:,1]
-    # end
-    # open("data/Z_test.dat","w") do io
-    #     writedlm(io,Z_test[1,:,1,:])
-    # end
 
 end
 
@@ -157,10 +106,10 @@ function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
     end
 end
 
-# #!for now I am skipping this one
-# @everywhere workers() function ic_Z(Z,dZdt)
-# end
-   
+
+
+
+
 #omegaIC calculates the Ω^2 matrix used in CQC calculations.
 #And it uses to return sqrt(Ω) and inverse of sqrt(Ω) matrices to be used in the initial conditions
 function omegaIC(ϕ_s,ψ_s)
@@ -271,6 +220,8 @@ function omegaIC(ϕ_s,ψ_s)
 end
 
 
+
+
 export renormalization
     #Renormalization is done using the <ρ^2>_0 factor which we calculate here.
     #<ρ^2>_0 is calculated using Z values when |ϕ|=η and ψ=0. 
@@ -279,39 +230,39 @@ export renormalization
     #Thus, instead of calculating Z at each lattice point for vacuum values of ϕ and ψ,
     #we only use the value of Z from the boundary.
     #More specifically, bottom right corner of lattice is used (could be any point on boundary)
-function renormalization()
-    corner_id = nprocs()
-    # Int(nprocs_perdim[1]+1)
-    meanSqrRenorm = @fetchfrom corner_id sum(abs2,Main.Z[Nx_loc+padd,:,Ny_loc+padd,:,1])
-    println(meanSqrRenorm)#!
-
+function renormalization(Z)
+    meanSqrRenorm = sum(abs2,Z[end-padd,:,end-padd,:,1])
+    println("meanSqrRenorm = ",meanSqrRenorm)#!
 return meanSqrRenorm
 end
 
 
+
+
 export zeroPointEnergy
-function zeroPointEnergy()
+function zeroPointEnergy(Z,dZdt)
 
-    #Get the proc id of the corner of x_max,y_max
-    corner_id = nprocs()
+    #Define temporary/partial fields
+    Z_partial = Array{ComplexF64,4}(undef,2,Nx,2,Ny)
+    dZdt_partial = Array{ComplexF64,2}(undef,Nx,Ny)
     #Fetch from the corner chunk
-    Z_partial = @fetchfrom corner_id Main.Z[rx_l-1:rx_l,:,ry_l-1:ry_l,:,1]
-    dZdt_partial = @fetchfrom corner_id Main.dZdt[rx_l-padd,:,ry_l-padd,:,1]
+    Z_partial .= @views Z[end-padd-1:end-padd,:,end-padd-1:end-padd,:,1]
+    dZdt_partial .= @views dZdt[end,:,end,:,1]
 
-    #Calculate zPE
-    kEZRen = 0.
-    gEZRen = 0.
-    pEZRen = 0.
-    for l=1:Nx
-        for m=1:Ny
-            kEZRen +=  ( abs2( dZdt_partial[l,m] ) )/2
-            gEZRen +=  ( abs2( (Z_partial[2,l,2,m] - Z_partial[1,l,2,m])/dx ) 
-                                + abs2( (Z_partial[2,l,2,m] - Z_partial[2,l,1,m])/dy ) )/2
-            pEZRen +=  m_ρ^2*( abs2(Z_partial[2,l,2,m,1]) )/2
+        #Calculate zPE
+        kEZRen = 0.
+        gEZRen = 0.
+        pEZRen = 0.
+        for l=1:Nx
+            for m=1:Ny
+                kEZRen +=  ( abs2( dZdt_partial[l,m] ) )/2
+                gEZRen +=  ( abs2( (Z_partial[2,l,2,m] - Z_partial[1,l,2,m])/dx ) 
+                                    + abs2( (Z_partial[2,l,2,m] - Z_partial[2,l,1,m])/dy ) )/2
+                pEZRen +=  m_ρ^2*( abs2(Z_partial[2,l,2,m]) )/2
+            end
         end
-    end
-    zPE = (kEZRen+gEZRen+pEZRen)/(dx*dy)
-    println("zPE= ",zPE)
+        zPE = (kEZRen+gEZRen+pEZRen)/(dx*dy)
+    println("zPE = ",zPE)
 return zPE
 end
 

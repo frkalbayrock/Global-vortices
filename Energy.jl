@@ -6,39 +6,44 @@ using .Parameters
 include("Auxiliary.jl")
 using .Auxiliary_Routines
 using OffsetArrays
+using DistributedArrays
 #!
-@everywhere using Profile, PProf
+@everywhere using Profile, PProf, InteractiveUtils
 
 export energy
-function energy(ZED,meanSqrRenorm,zPE)
+function energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
+
+
+    # #!
+    # @sync @distributed for _ in workers()
+    #     lan = size(localpart(ψ))
+    #     anan = zeros(lan[1],lan[2]).+myid()
+    #     @views localpart(ψ)[:,:,1] .= anan
+        
+    #     anan = im*zeros(lan[1],lan[2]).+myid()
+    #     @views localpart(ϕ)[:,:,1] .= anan
+
+    # end
+    # #!
 
     #--Update the paddings before calculating energy
-    @everywhere workers() update_Paddings(1)
-
-    #--Calculate energy on each chunk
-    @everywhere workers() totalE_loc , ZED_loc = energy_calculation(ϕ,ψ,Z,dϕdt,dψdt,dZdt,($meanSqrRenorm),($zPE))
+    update_Paddings!(ϕ,ψ,Z,1)
 
 
-    #--Combine local energies for total energy 
-    totalE = 0
-    for i in workers()
-        totalE += @fetchfrom i Main.totalE_loc
+    #--Calculate the total energy
+    totalE = @sync @distributed (+) for _ in workers()
+        totalE_loc = energy_calculation!(localpart(ϕ),localpart(ψ),localpart(Z),
+                                         localpart(dϕdt),localpart(dψdt),localpart(dZdt),
+                                         localpart(ZED),meanSqrRenorm,zPE)
+        totalE_loc
     end
-    
 
-    #---Collect ZED to global
-    for i in workers()
-        lx_p, rx_p, ly_p, ry_p = chunker(i)
-        ZED[lx_p:rx_p, ly_p:ry_p] .= @fetchfrom i Main.ZED_loc[:,:]
-    end
 
 return totalE
 end
 
 
-@everywhere workers() function energy_calculation(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
-
-
+function energy_calculation!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
 
 
     #---Using Two-Index Notation---#
@@ -55,9 +60,6 @@ end
         #Total Energies
         totalE = 0.
 
-        #!
-        ZED_loc = zeros(Nx_loc,Ny_loc)
-        # ZED_loc = OffsetArray(ZED_loc,lx:rx,ly:ry)
 
         #Integrate over all space
         for j=padd+1:padd+Nx_loc
@@ -71,7 +73,7 @@ end
                          + ( (ψ[j,k+1,1] - ψ[j,k,1])/dy )^2 )/2
                         + ( abs2( (ϕ[j+1,k,1] - ϕ[j,k,1])/dx ) 
                           + abs2( (ϕ[j,k+1,1] - ϕ[j,k,1])/dy ) ) )
-                pEϕψ = -m_ϕ^2*abs2(ϕ[j,k,1]) + m_ψ^2*ψ[j,k,1]^2/2 + λ*abs2(ϕ[j,k,1])^2/2 #+ λ*eta^4/4
+                pEϕψ = -m_ϕ^2*abs2(ϕ[j,k,1]) + m_ψ^2*ψ[j,k,1]^2/2 + λ*abs2(ϕ[j,k,1])^2/2 #+ λ*η^4/2
                 #Total classical energy density
                 classicalE = kEϕψ + gEϕψ + pEϕψ
 
@@ -108,13 +110,14 @@ end
                 #Total energy
                 totalE = totalE + dx*dy*sumE
 
-                #!Change later
-                ZED_loc[j-padd,k-padd] = quantumEZ
+                #Energy density of Z update
+                ZED[j-padd,k-padd] = quantumEZ
 
             end
         end
-#!Change later
-return totalE,ZED_loc
+
+        
+return totalE
 end
 
 
@@ -195,5 +198,6 @@ end
         #     #!Change later
         #     # return ZED
         #     return totalE,ZED#, Edensity
+#
 
 end #module

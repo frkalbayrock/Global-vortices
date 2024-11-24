@@ -19,6 +19,10 @@ function vortex_finder(ϕ)
            
             #extract the phase
             θ = zeros(4)
+            # θ[1] = angle(ϕ[j,k,1])
+            # θ[2] = angle(ϕ[j+1,k,1])
+            # θ[3] = angle(ϕ[j+1,k+1,1])
+            # θ[4] = angle(ϕ[j,k+1,1])
             θ[1] = angle(ϕ[j,k])
             θ[2] = angle(ϕ[j+1,k])
             θ[3] = angle(ϕ[j+1,k+1])

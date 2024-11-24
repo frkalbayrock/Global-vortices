@@ -22,8 +22,8 @@ const nt=2000
 
 #--Couplings and Masses #!TO BE FINE_TUNED
 const λ=1
-const α=1
-const β=1
+const α=1#0.5
+const β=1#0.5
 const η=1
 const m_ρ=1
 const m_ϕ=sqrt(λ*η^2)

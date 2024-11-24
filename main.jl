@@ -52,13 +52,6 @@ end
 
 #--Initilize the Global Lattice Arrays 
     #Standards:  ϕ and ψ are in 2D lattice // Z can be on the flattened 1D N^2 lattice or native 2D lattice
-    # const ϕ_gl = OffsetArray(im*zeros(Nx, Ny),lx:rx,ly:ry)
-    # const ψ_gl = OffsetArray(zeros(Nx, Ny),lx:rx,ly:ry)
-    # const ZED_gl = OffsetArray(zeros(Nx,Ny),lx:rx,ly:ry)
-
-    const ϕ_gl = im*zeros(Nx, Ny)
-    const ψ_gl =    zeros(Nx, Ny)
-
     const ϕ = im.*dzeros(Nx_padd,Ny_padd,2)
     const ψ =     dzeros(Nx_padd,Ny_padd,2)
     const dϕdt = im.*dzeros(Nx,Ny,2)
@@ -69,38 +62,23 @@ end
     const dZdt = DArray((Nx,Nx,Ny,Ny,2),workers(),[nprocs_perdim[1],1,nprocs_perdim[2],1,1]) do I
         im*zeros(length(I[1]),length(I[2]),length(I[3]),length(I[4]),length(I[5]))
     end
+    const ZED = dzeros(Nx,Ny)
+    #Global fields only for recording purposes --#!might change later if we can find an efficient way of doing it. 
+    const ϕ_gl = im*zeros(Nx,Ny)
+    const ψ_gl =    zeros(Nx,Ny)
 
-
-    @sync @distributed for p in workers()
-        
-    end
 
 
 function run_ev()
 
-#--Initilize the Chunk Field Arrays
-    # @everywhere workers() begin 
-    #     ϕ =    im*zeros(Nx_loc+padding_size, Ny_loc+padding_size, 2)
-    #     ψ =       zeros(Nx_loc+padding_size, Ny_loc+padding_size, 2)
-    #     dϕdt = im*zeros(Nx_loc, Ny_loc, 2) #!it looks like these don't need the padding.
-    #     dψdt =    zeros(Nx_loc, Ny_loc, 2) #!but easier for "for" loops when ϕ and dϕdt are in the same one (see dZdt)
-    #     #2-index Z
-    #     # Z =    Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
-    #     # dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2)
-    #     #4-index Z
-    #     Z =    Array{ComplexF64,5}(undef, Nx_loc+padding_size, Nx, Ny_loc+padding_size, Ny, 2)
-    #     dZdt = Array{ComplexF64,5}(undef, Nx_loc, Nx, Ny_loc, Ny, 2) #!BUT for this one it might be a huge overhead!(see above red)
-    # end
-
-
-    #--Information about the run
+    #--Information about the run 
     open("data/info.dat","w") do io
         #--Write Info For Graphs--!
-        write(io,N,"x",N,"\n")  #number of lattice points
-        writedlm(io,dx)         #lattice spacing
-        writedlm(io,dt)         #time spacing
-        writedlm(io,nt)         #number of time steps
-        writedlm(io,nsnaps)     #number of snapshots
+        println(io,Nx,"x",Ny)  #number of lattice points
+        println(io,dx)         #lattice spacing
+        println(io,dt)         #time spacing
+        println(io,nt)         #number of time steps
+        println(io,nsnaps)     #number of snapshots
     end
     #Info
     println("Number of lattice points: ",Nx," x ",Ny)
@@ -113,6 +91,7 @@ function run_ev()
     #Data files
     ioϕ=open("data/initial_phi.dat","w")
     ioψ=open("data/initial_psi.dat","w")
+    ioZED=open("data/initial_ZED.dat","w")
 
     
 
@@ -120,18 +99,18 @@ function run_ev()
     #----Initial Conditions----#
     @time initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
 
-    #Record initial conditions
+    #Record initial conditions #!TEST IT FOR SPEED/ALLOCATIONS
     open("data/initial_phi.dat","w") do ioϕ
     open("data/initial_psi.dat","w") do ioψ
-    # for p in workers()
-    #     lx_p, rx_p, ly_p, ry_p = distChunker(p)
-    #     ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
-    #     ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Ny_loc+padd,1+padd:Ny_loc+padd,1]
-    # end
+    for p in workers()
+        lx_p, rx_p, ly_p, ry_p = distChunker(p)
+        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Ny_loc+padd,1+padd:Ny_loc+padd,1]
+        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
+    end
     writedlm(ioϕ,ϕ_gl[:,:])
-    # writedlm(ioψ,ψ_gl[:,:])
-    writedlm(ioψ,ψ[:,:,1]) #! this doesn't work for me since there are paddings 
-                            #!either remove paddings on the plotting side or just use a separate "global" field array
+    writedlm(ioψ,ψ_gl[:,:])
+    # writedlm(ioψ,ψ[:,:,1]) #! this doesn't work for me since there are paddings 
+    #                         #!either remove paddings on the plotting side or just use a separate "global" field array
     end
     end
 
@@ -144,28 +123,30 @@ function run_ev()
     # @views conserved_checker(Z_t[:,:],dZdt_t[:,:])
 
 
-    # #----Renormalization----#
-    # meanSqrRenorm = renormalization()
-    # zPE = zeroPointEnergy()
+    #----Renormalization----#
+    meanSqrRenorm =  renormalization(Z)
+    zPE = zeroPointEnergy(Z,dZdt)
 
 
-    # #----Initial Energy----#
-    # totalE = energy(ZED_gl,meanSqrRenorm,zPE)
-    # ZedIO = open("data/energies/ZED.dat","w")
-    # writedlm(ZedIO,ZED_gl)
-    # println("Total initial energy: ",totalE)
+    #----Initial Energy----#
+    totalE = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
+    writedlm(ioZED,ZED)
+    println("Total initial energy: ",totalE)
 
 
-    # #----Time Evolution----#
-    # @time time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
+    #----Time Evolution----#
+    @time time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE,ϕ_gl,ψ_gl)
+#    Profile.Allocs.@profile sample_rate=0.01 time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE,ϕ_gl,ψ_gl)
+#     PProf.Allocs.pprof(from_c=false) 
 
 
-    # #----Check for Vortices----#
-    # vortex_finder(ϕ_gl)
+    #----Check for Vortices----#
+    # vortex_pos, anti_vortex_pos = vortex_finder(ϕ)
  
-    # #Close data files
-    # close(ioϕ)
-    # close(ioψ)
+
+    #Close data files
+    close(ioϕ)
+    close(ioψ)
 
 end 
 
@@ -175,6 +156,14 @@ println("Removing workers done.")
 #END OF CODE
 
 
+
+
+# if myrank == 1
+#     Profile.Allocs.@profile sample_rate=0.01 run_ev()
+#     PProf.Allocs.pprof(from_c=false)
+# else
+#     @time run_ev()
+# end
 
 
 
