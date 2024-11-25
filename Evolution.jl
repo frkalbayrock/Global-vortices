@@ -75,7 +75,7 @@ function time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE,ϕ_gl,ψ_gl
             #Update global fields for recording
             for p in workers()
                 lx_p, rx_p, ly_p, ry_p = distChunker(p)
-                ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Ny_loc+padd,1+padd:Ny_loc+padd,1]
+                ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
                 ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
             end
 
