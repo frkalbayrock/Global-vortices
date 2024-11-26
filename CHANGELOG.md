@@ -1,5 +1,8 @@
 # CHANGELOG
 
+#### v1.0.0
+Upgrading the version number only. No changes have been made here.
+
 #### v0.3.10
 Small changes for parallel-Julia version of the code. Mainly FindVortex module is updated for vortex positions recording. 
 
