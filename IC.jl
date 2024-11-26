@@ -22,18 +22,21 @@ using Distributed
 export initialConditions!
 #Set initial conditions for the fields ϕ, ψ, ρ
 function initialConditions!(ϕ_gl,ψ_gl)
+
     
     #---Set i.c. for ϕ and ψ locally
     @everywhere workers() ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
+
 
     #---Collect ϕ and ψ to global fields for Ω calculation
     for i=2:nprocs()
         lx_p, rx_p, ly_p, ry_p = chunker(i) #_p: physical
         ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ϕ[padd+1:Nx_loc+padd,
-                                                        1+padd:padd+Ny_loc,1] 
+                                                        1+padd:padd+Ny_loc] 
         ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ψ[padd+1:Nx_loc+padd,
-                                                        1+padd:padd+Ny_loc,1] 
+                                                        1+padd:padd+Ny_loc] 
     end
+
 
     #---Calculate Ω
     #2-index to 1-index mapping
@@ -43,64 +46,25 @@ function initialConditions!(ϕ_gl,ψ_gl)
     S_Ωzero, inv_S_Ωzero = omegaIC(ϕ_s,ψ_s)
 
 
-
     #---Set i.c. for global Z
     #4-indexed Z and Ω
     S_Ωzero_f = mapZTo4Index(S_Ωzero)
     inv_S_Ωzero_f = mapZTo4Index(inv_S_Ωzero)
 
-
-    #!This part can be done on workers since omega's are now 4-indexed
-    #!Then we can skip having a global Z and dZdt
-
-    # #Z (ρ) i.c.   
-    # Z_gl[:,:,:,:] .= -im/sqrt(2) .* inv_S_Ωzero_f
-    # dZdt_gl[:,:,:,:].= 1/sqrt(2) .* S_Ωzero_f
-
-
-    # #---Chunk Z and send it to workers
-    # @everywhere workers() begin
-    #     lx_p, rx_p, ly_p, ry_p = chunker(myid())
-    #     lx_p = Int(Nx/2+lx_p)
-    #     rx_p = Int(Nx/2+rx_p)
-    #     ly_p = Int(Ny/2+ly_p)
-    #     ry_p = Int(Ny/2+ry_p)
-
-    #     Z[padd+1:Nx_loc+padd,:,
-    #         padd+1:Ny_loc+padd,:,1] .= ($Z_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
-    #     dZdt[:,:,:,:,1]             .= ($dZdt_gl)[lx_p:rx_p,:,ly_p:ry_p,:]
-    # end
-
     
-        #---Chunk Z and send it to workers
-        @everywhere workers() begin
-            lx_p, rx_p, ly_p, ry_p = chunker(myid())
-            lx_p = Int(Nx/2+lx_p)
-            rx_p = Int(Nx/2+rx_p)
-            ly_p = Int(Ny/2+ly_p)
-            ry_p = Int(Ny/2+ry_p)
-    
-            Z[padd+1:Nx_loc+padd,:,
-                padd+1:Ny_loc+padd,:,1] .= -im/sqrt(2) .* ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-            dZdt[:,:,:,:,1]             .= 1/sqrt(2)   .* ($S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-        end
-    
-  
+    #---Chunk Z and send it to workers
+    @everywhere workers() begin
+        lx_p, rx_p, ly_p, ry_p = chunker(myid())
+        lx_p = Int(Nx/2+lx_p)
+        rx_p = Int(Nx/2+rx_p)
+        ly_p = Int(Ny/2+ly_p)
+        ry_p = Int(Ny/2+ry_p)
 
-    # #!Test by collecting back what we sent and recording
-    # Z_test = im*zeros(Nx,Nx,Ny,Ny)
-    # for i in 2:nprocs()
-    #     lx_p, rx_p, ly_p, ry_p = chunker(i)
-    #     lx_p = Int(Nx/2+lx_p)
-    #     rx_p = Int(Nx/2+rx_p)
-    #     ly_p = Int(Ny/2+ly_p)
-    #     ry_p = Int(Ny/2+ry_p)
-    #     Z_test[lx_p:rx_p,:,ly_p:ry_p,:] .= @fetchfrom i Main.Z[padd+1:padd+Nx_loc,:,
-    #                              padd+1:padd+Ny_loc,:,1]
-    # end
-    # open("data/Z_test.dat","w") do io
-    #     writedlm(io,Z_test[1,:,1,:])
-    # end
+        Z[padd+1:Nx_loc+padd,:,
+            padd+1:Ny_loc+padd,:] .= -im/sqrt(2) .* ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
+        dZdt[:,:,:,:,1]             .= 1/sqrt(2)   .* ($S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
+    end
+
 
 end
 
@@ -131,9 +95,9 @@ end
             y1 = y-r0
             y2 = y+r0
             δϕ = f_amp*sin(κ*x)sin(κ*y) 
-            ϕ[j,k,1] = η #+ im*δϕ
+            ϕ[j,k] = η #+ im*δϕ
             dϕdt[j-padd,k-padd,1] = 0
-            ψ[j,k,1] = amp*(exp( -width/(vx^2 + vy^2)
+            ψ[j,k] = amp*(exp( -width/(vx^2 + vy^2)
                                * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )       
                           + exp( -width/(vx^2 + vy^2) 
                              * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
@@ -270,8 +234,8 @@ export renormalization
 function renormalization()
     corner_id = nprocs()
     # Int(nprocs_perdim[1]+1)
-    meanSqrRenorm = @fetchfrom corner_id sum(abs2,Main.Z[Nx_loc+padd,:,Ny_loc+padd,:,1])
-    println(meanSqrRenorm)#!
+    meanSqrRenorm = @fetchfrom corner_id sum(abs2,Main.Z[Nx_loc+padd,:,Ny_loc+padd,:])
+    println("<ρ^2>: ",meanSqrRenorm)
 
 return meanSqrRenorm
 end
@@ -283,7 +247,7 @@ function zeroPointEnergy()
     #Get the proc id of the corner of x_max,y_max
     corner_id = nprocs()
     #Fetch from the corner chunk
-    Z_partial = @fetchfrom corner_id Main.Z[rx_l-1:rx_l,:,ry_l-1:ry_l,:,1]
+    Z_partial = @fetchfrom corner_id Main.Z[rx_l-1:rx_l,:,ry_l-1:ry_l,:]
     dZdt_partial = @fetchfrom corner_id Main.dZdt[rx_l-padd,:,ry_l-padd,:,1]
 
     #Calculate zPE

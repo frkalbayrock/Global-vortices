@@ -168,24 +168,24 @@ end
 
 #Data exchange initiator to fill paddings with updated data from neighboring blocks
 # function update_Paddings(t::Int)
-@everywhere workers() function update_Paddings(t::Int)
+@everywhere workers() function update_Paddings()
         #Find neighbors
         n_left, n_right, n_bottom, n_top = find_neighbours(myid())
         #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
-        ϕ[1:padd, padd+1:Ny_loc+padd, t]            .= @fetchfrom n_left   getData_ϕ(1,t)
-        ϕ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd, t] .= @fetchfrom n_right  getData_ϕ(2,t)
-        ϕ[padd+1:Nx_loc+padd, 1:padd, t]            .= @fetchfrom n_bottom getData_ϕ(3,t)
-        ϕ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end, t] .= @fetchfrom n_top    getData_ϕ(4,t)
+        ϕ[1:padd, padd+1:Ny_loc+padd]            .= @fetchfrom n_left   getData_ϕ(1)
+        ϕ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd] .= @fetchfrom n_right  getData_ϕ(2)
+        ϕ[padd+1:Nx_loc+padd, 1:padd]            .= @fetchfrom n_bottom getData_ϕ(3)
+        ϕ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end] .= @fetchfrom n_top    getData_ϕ(4)
 
-        ψ[1:padd, padd+1:Ny_loc+padd, t]            .= @fetchfrom n_left   getData_ψ(1,t)
-        ψ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd, t] .= @fetchfrom n_right  getData_ψ(2,t)
-        ψ[padd+1:Nx_loc+padd, 1:padd, t]            .= @fetchfrom n_bottom getData_ψ(3,t)
-        ψ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end, t] .= @fetchfrom n_top    getData_ψ(4,t)
+        ψ[1:padd, padd+1:Ny_loc+padd]            .= @fetchfrom n_left   getData_ψ(1)
+        ψ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd] .= @fetchfrom n_right  getData_ψ(2)
+        ψ[padd+1:Nx_loc+padd, 1:padd]            .= @fetchfrom n_bottom getData_ψ(3)
+        ψ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end] .= @fetchfrom n_top    getData_ψ(4)
 
-        Z[1:padd, :, padd+1:Ny_loc+padd, :, t]            .= @fetchfrom n_left   getData_Z(1,t)
-        Z[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :, t] .= @fetchfrom n_right  getData_Z(2,t)
-        Z[padd+1:Nx_loc+padd, :, 1:padd, :, t]            .= @fetchfrom n_bottom getData_Z(3,t)
-        Z[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :, t] .= @fetchfrom n_top    getData_Z(4,t)
+        Z[1:padd, :, padd+1:Ny_loc+padd, :]            .= @fetchfrom n_left   getData_Z(1)
+        Z[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :] .= @fetchfrom n_right  getData_Z(2)
+        Z[padd+1:Nx_loc+padd, :, 1:padd, :]            .= @fetchfrom n_bottom getData_Z(3)
+        Z[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :] .= @fetchfrom n_top    getData_Z(4)
 return nothing
 end
 
@@ -193,18 +193,18 @@ end
 # @everywhere workers() 
 # export getData_ψ
 # function getData_ψ(neighbour::Int,t::Int)
-@everywhere workers() function getData_ψ(neighbour::Int,t::Int) #! for now i have to define them like this for name space issues, 
+@everywhere workers() function getData_ψ(neighbour::Int) #! for now i have to define them like this for name space issues, 
                                                                     #! also needed "using Distributed" in this module
                                                                     #!I wanna make Auxiliary not a module eventually.
     #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
     if neighbour == 1
-        return @views ψ[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd, t]::SubArray{Float64, 2, Array{Float64, 3}, Tuple{UnitRange{Int64}, UnitRange{Int64}, Int64}, false}
+        return @views ψ[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd,]::SubArray{Float64, 2, Array{Float64, 2}, Tuple{UnitRange{Int64}, UnitRange{Int64}}, false}
     elseif neighbour == 2
-        return @views ψ[padd+1:padding_size, padd+1:Ny_loc+padd, t]::SubArray{Float64, 2, Array{Float64, 3}, Tuple{UnitRange{Int64}, UnitRange{Int64}, Int64}, false}
+        return @views ψ[padd+1:padding_size, padd+1:Ny_loc+padd,]::SubArray{Float64, 2, Array{Float64, 2}, Tuple{UnitRange{Int64}, UnitRange{Int64}}, false}
     elseif neighbour == 3
-        return  @views ψ[padd+1:Nx_loc+padd, Ny_loc+padd:end-padd, t]::SubArray{Float64, 2, Array{Float64, 3}, Tuple{UnitRange{Int64}, UnitRange{Int64}, Int64}, false}
+        return  @views ψ[padd+1:Nx_loc+padd, Ny_loc+padd:end-padd]::SubArray{Float64, 2, Array{Float64, 2}, Tuple{UnitRange{Int64}, UnitRange{Int64}}, false}
     elseif neighbour == 4
-        return @views ψ[padd+1:Nx_loc+padd, padd+1:padding_size, t]::SubArray{Float64, 2, Array{Float64, 3}, Tuple{UnitRange{Int64}, UnitRange{Int64}, Int64}, false}
+        return @views ψ[padd+1:Nx_loc+padd, padd+1:padding_size]::SubArray{Float64, 2, Array{Float64, 2}, Tuple{UnitRange{Int64}, UnitRange{Int64}}, false}
     else
         error("Invalid neighbour index")
     end
@@ -214,16 +214,16 @@ end
 # @everywhere workers() 
 # export getData_ϕ
 # function getData_ϕ(neighbour::Int,t::Int)
-@everywhere workers() function getData_ϕ(neighbour,t)
+@everywhere workers() function getData_ϕ(neighbour)
     #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
     if neighbour == 1
-        return @views ϕ[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd, t]::SubArray{ComplexF64, 2, Array{ComplexF64, 3}, Tuple{UnitRange{Int64}, UnitRange{Int64}, Int64}, false}
+        return @views ϕ[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd]::SubArray{ComplexF64, 2, Array{ComplexF64, 2}, Tuple{UnitRange{Int64}, UnitRange{Int64}}, false}
     elseif neighbour == 2
-        return @views ϕ[padd+1:padding_size, padd+1:Ny_loc+padd, t]::SubArray{ComplexF64, 2, Array{ComplexF64, 3}, Tuple{UnitRange{Int64}, UnitRange{Int64}, Int64}, false}
+        return @views ϕ[padd+1:padding_size, padd+1:Ny_loc+padd]::SubArray{ComplexF64, 2, Array{ComplexF64, 2}, Tuple{UnitRange{Int64}, UnitRange{Int64}}, false}
     elseif neighbour == 3
-        return @views ϕ[padd+1:Nx_loc+padd, Ny_loc+padd:end-padd, t]::SubArray{ComplexF64, 2, Array{ComplexF64, 3}, Tuple{UnitRange{Int64}, UnitRange{Int64}, Int64}, false}
+        return @views ϕ[padd+1:Nx_loc+padd, Ny_loc+padd:end-padd]::SubArray{ComplexF64, 2, Array{ComplexF64, 2}, Tuple{UnitRange{Int64}, UnitRange{Int64}}, false}
     elseif neighbour == 4
-        return @views ϕ[padd+1:Nx_loc+padd, padd+1:padding_size, t]::SubArray{ComplexF64, 2, Array{ComplexF64, 3}, Tuple{UnitRange{Int64}, UnitRange{Int64}, Int64}, false}
+        return @views ϕ[padd+1:Nx_loc+padd, padd+1:padding_size]::SubArray{ComplexF64, 2, Array{ComplexF64, 2}, Tuple{UnitRange{Int64}, UnitRange{Int64}}, false}
     else
         error("Invalid neighbour index")
     end
@@ -233,16 +233,16 @@ end
 # @everywhere workers() 
 # export getData_Z
 # function getData_Z(neighbour::Int,t::Int)
-@everywhere workers() function getData_Z(neighbour,t)
+@everywhere workers() function getData_Z(neighbour)
     #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
     if neighbour == 1
-        return @views Z[Nx_loc+padd:end-padd, :, padd+1:Ny_loc+padd, :, t]::SubArray{ComplexF64, 4, Array{ComplexF64, 5}, Tuple{UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, Int64}, false}
+        return @views Z[Nx_loc+padd:end-padd, :, padd+1:Ny_loc+padd, :]::SubArray{ComplexF64, 4, Array{ComplexF64, 4}, Tuple{UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}}, false}
     elseif neighbour == 2
-        return @views Z[padd+1:padding_size, :, padd+1:Ny_loc+padd, :, t]::SubArray{ComplexF64, 4, Array{ComplexF64, 5}, Tuple{UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, Int64}, false}
+        return @views Z[padd+1:padding_size, :, padd+1:Ny_loc+padd, :]::SubArray{ComplexF64, 4, Array{ComplexF64, 4}, Tuple{UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}}, false}
     elseif neighbour == 3
-        return @views Z[padd+1:Nx_loc+padd, :, Ny_loc+padd:end-padd, :, t]::SubArray{ComplexF64, 4, Array{ComplexF64, 5}, Tuple{UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, Int64}, false}
+        return @views Z[padd+1:Nx_loc+padd, :, Ny_loc+padd:end-padd, :]::SubArray{ComplexF64, 4, Array{ComplexF64, 4}, Tuple{UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}}, false}
     elseif neighbour == 4
-        return @views Z[padd+1:Nx_loc+padd, :, padd+1:padding_size, :, t]::SubArray{ComplexF64, 4, Array{ComplexF64, 5}, Tuple{UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, Int64}, false}
+        return @views Z[padd+1:Nx_loc+padd, :, padd+1:padding_size, :]::SubArray{ComplexF64, 4, Array{ComplexF64, 4}, Tuple{UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}}, false}
     else
         error("Invalid neighbour index")
     end

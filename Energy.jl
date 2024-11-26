@@ -13,7 +13,7 @@ export energy!
 function energy!(ZED,meanSqrRenorm,zPE)
 
     #--Update the paddings before calculating energy
-    @everywhere workers() update_Paddings(1)
+    @everywhere workers() update_Paddings()
 
     #--Calculate energy on each chunk
     @everywhere workers() totalE_loc , ZED_loc = energy_calculation(ϕ,ψ,Z,dϕdt,dψdt,dZdt,($meanSqrRenorm),($zPE))
@@ -42,7 +42,7 @@ end
 
 
     #---Using Two-Index Notation---#
-        # Z_t , dZdt_t = mapZTo4Index(Z[:,:,1],dZdt[:,:,1]) #!This needs an update since the definition of the function changed.
+
         #Classical fields densities
         kEϕψ = 0.
         gEϕψ = 0.
@@ -67,11 +67,11 @@ end
 
                 #Kinetic, gradient, potential energy densities
                 kEϕψ = abs2(dϕdt[j-padd,k-padd,1]) + (dψdt[j-padd,k-padd,1])^2/2
-                gEϕψ = ( ( ( (ψ[j+1,k,1] - ψ[j,k,1])/dx )^2  
-                         + ( (ψ[j,k+1,1] - ψ[j,k,1])/dy )^2 )/2
-                        + ( abs2( (ϕ[j+1,k,1] - ϕ[j,k,1])/dx ) 
-                          + abs2( (ϕ[j,k+1,1] - ϕ[j,k,1])/dy ) ) )
-                pEϕψ = -m_ϕ^2*abs2(ϕ[j,k,1]) + m_ψ^2*ψ[j,k,1]^2/2 + λ*abs2(ϕ[j,k,1])^2/2 #+ λ*eta^4/4
+                gEϕψ = ( ( ( (ψ[j+1,k] - ψ[j,k])/dx )^2  
+                         + ( (ψ[j,k+1] - ψ[j,k])/dy )^2 )/2
+                        + ( abs2( (ϕ[j+1,k] - ϕ[j,k])/dx ) 
+                          + abs2( (ϕ[j,k+1] - ϕ[j,k])/dy ) ) )
+                pEϕψ = -m_ϕ^2*abs2(ϕ[j,k]) + m_ψ^2*ψ[j,k]^2/2 + λ*abs2(ϕ[j,k])^2/2 + λ*eta^4/4
                 #Total classical energy density
                 classicalE = kEϕψ + gEϕψ + pEϕψ
 
@@ -84,18 +84,18 @@ end
                 for l=1:Nx
                     for m=1:Ny
                         kEZ = kEZ + ( abs2(dZdt[j-padd,l,k-padd,m,1]) )/2
-                        gEZfwd = ( abs2((Z[j+1,l,k,m,1] - Z[j,l,k,m,1])/dx)  
-                                 + abs2((Z[j,l,k+1,m,1] - Z[j,l,k,m,1])/dy) )/2
-                        gEZbkd = ( abs2((Z[j,l,k,m,1] - Z[j-1,l,k,m,1])/dx)  
-                                 + abs2((Z[j,l,k,m,1] - Z[j,l,k-1,m,1])/dy) )/2
+                        gEZfwd = ( abs2((Z[j+1,l,k,m] - Z[j,l,k,m])/dx)  
+                                 + abs2((Z[j,l,k+1,m] - Z[j,l,k,m])/dy) )/2
+                        gEZbkd = ( abs2((Z[j,l,k,m] - Z[j-1,l,k,m])/dx)  
+                                 + abs2((Z[j,l,k,m] - Z[j,l,k-1,m])/dy) )/2
                         gEZ = gEZ + (gEZbkd + gEZfwd)/2
-                        pEZ = pEZ + m_ρ^2* abs2(Z[j,l,k,m,1])/2
-                        intEZ = intEZ + ( α*abs2(ϕ[j,k,1]) + β*ψ[j,k,1]^2 ) * ( abs2(Z[j,l,k,m,1]) )/2
+                        pEZ = pEZ + m_ρ^2* abs2(Z[j,l,k,m])/2
+                        intEZ = intEZ + ( α*abs2(ϕ[j,k]) + β*ψ[j,k]^2 ) * ( abs2(Z[j,l,k,m]) )/2
                     end
                 end
             
                 #Renormalization
-                intEZ = intEZ - ( α*abs2(ϕ[j,k,1]) + β*ψ[j,k,1]^2 )*meanSqrRenorm/2
+                intEZ = intEZ - ( α*abs2(ϕ[j,k]) + β*ψ[j,k]^2 )*meanSqrRenorm/2
                 #Total energy density of Z including the interactions
                 quantumEZ = (kEZ + gEZ + pEZ + intEZ)/(dx*dy)
 
@@ -195,5 +195,6 @@ end
         #     #!Change later
         #     # return ZED
         #     return totalE,ZED#, Edensity
+#
 
 end #module

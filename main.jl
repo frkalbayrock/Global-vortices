@@ -59,15 +59,15 @@ function run_ev()
 
 #--Initilize the Chunk Field Arrays
     @everywhere workers() begin 
-        ϕ =    im*zeros(Nx_loc+padding_size, Ny_loc+padding_size, 2)
-        ψ =       zeros(Nx_loc+padding_size, Ny_loc+padding_size, 2)
+        ϕ =    im*zeros(Nx_loc+padding_size, Ny_loc+padding_size)
+        ψ =       zeros(Nx_loc+padding_size, Ny_loc+padding_size)
         dϕdt = im*zeros(Nx_loc, Ny_loc, 2) #!it looks like these don't need the padding.
         dψdt =    zeros(Nx_loc, Ny_loc, 2) #!but easier for "for" loops when ϕ and dϕdt are in the same one (see dZdt)
         #2-index Z
         # Z =    Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
         # dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2)
         #4-index Z
-        Z =    Array{ComplexF64,5}(undef, Nx_loc+padding_size, Nx, Ny_loc+padding_size, Ny, 2)
+        Z =    Array{ComplexF64,4}(undef, Nx_loc+padding_size, Nx, Ny_loc+padding_size, Ny)
         dZdt = Array{ComplexF64,5}(undef, Nx_loc, Nx, Ny_loc, Ny, 2) #!BUT for this one it might be a huge overhead!(see above red)
     end
 
@@ -75,11 +75,11 @@ function run_ev()
     #--Information about the run
     open("data/info.dat","w") do io
         #--Write Info For Graphs--!
-        write(io,N,"x",N,"\n")  #number of lattice points
-        writedlm(io,dx)         #lattice spacing
-        writedlm(io,dt)         #time spacing
-        writedlm(io,nt)         #number of time steps
-        writedlm(io,nsnaps)     #number of snapshots
+        println(io,Nx,"x",Ny)  #number of lattice points
+        println(io,dx)         #lattice spacing
+        println(io,dt)         #time spacing
+        println(io,nt)         #number of time steps
+        println(io,nsnaps)     #number of snapshots
     end
     #Info
     println("Number of lattice points: ",Nx," x ",Ny)

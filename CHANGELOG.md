@@ -1,39 +1,76 @@
 # CHANGELOG
 
+#### v1.0.1
+Found a way to get rid of the time coordinate only from the fields f (not dfdt's). Could improve memory allocations and overall performance.
+
+All the changes listed:
+
+Auxiliary.jl:
+- updatePaddings(), getData_f() no longer have "t" as an argument and inside every "t" is removed.
+- In getData_f() we also changed the expected field definitions to be returned, there is one less argument on all of them.
+
+Energy.jl:
+- update_Paddings() no longer need argument which is deleted here.
+- All the fields inside energy_calculation() now have only space coordinates; all the time dependencies are removed.
+- Small cosmetic changes and some extra stuff removed.
+
+Evolution.jl:
+- update_Paddings() no longer need argument which is deleted here.
+- All the explicit time dependencies from the fields are removed in time_evolution(), half_step(), leap_forward(), flux_Z(), updateForNextStep().
+- Small cosmetic changes.
+
+IC.jl: 
+- All the explicit time dependencies from the fields are removed in initialConditions(), ic_ϕ,ψ(), renormalization(), zeroPointEnergy(). 
+- Some cosmetic changes and some extra stuff removed.
+
+main.jl:
+- Definitions of the fields ϕ, ψ and Z were changed to remove the time coordinate.
+- Writing the informaiton on a file part is updated as other DArray version of the code with println()'s instead of writedlm().
+- 
+
 #### v1.0.0
 Upgrading the version number only. No changes have been made here.
 
 #### v0.3.10
 Small changes for parallel-Julia version of the code. Mainly FindVortex module is updated for vortex positions recording. 
 
-All the changes listed  
+All the changes listed  :
+
 Energy.jl:  
 - energy() is now defined energy!()
+
 Evolution.jl:  
 - vortex_finder() is used during evolution. It now records every snap time rather than just at the end. And the positions are recorded right after into the same file; first vortices written on a line and then the anti-vortices written on the next line. So odd numbered lines are for vortices and evens are for anti-vortices.
 - All the data files used during evolution is closed.
+
 FindVortex.jl:  
 - vortex_finder(): vortex_pos and anti_votex_pos defined to record the positions of vortex/anti-vortex and returns these vectors to the calling program.
+
 main.jl:  
 - Initial Z energy density (ZED) is nto recorded into a separate file called "initial_ZED.dat".
 
 
 #### v0.3.6
 All the changes listed:  
+
 Auxiliary.jl:
 - For the parallel functions' arguments, the types are added for performance improvement. 
 - update_Padddings() returns nothing now. Before it was accidently returning the last line which had some performance hit.
 - getData functions' if statements covers everything now; else added with error statement.
+
 Evolution.jl:
 - 
+
 IC.jl:
 - Z_gl and dZdt_gl is removed from arguments and local Z's are now calcualted directly from the omega matrices.
 - Fluctuations are added for the field ϕ
 - Small synhtatic updates.
 - S_Ωzero, inv_S_Ωzero are now created first with zeros earlier, then updated with sqrt()'s etc.
+
 main.jl:
 - Z_gl and dZdt_gl is no longer created. We set local Z's directly on the workers now using 4-index omega matrices.
 - Vortex finder is called after time_evolution()
+
 Parameters.jl:
 - lx, rx are defined with Int() rather than Int.16() for performance reasons.
 - dt_half is defined here for performance.
