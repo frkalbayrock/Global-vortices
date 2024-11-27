@@ -30,8 +30,8 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
     #---Collect ϕ and ψ to global fields for Ω calculation
     for p in workers()
         lx_p, rx_p, ly_p, ry_p = distChunker(p)
-        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
-        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
+        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd]
+        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd]
     end
 
 
@@ -56,7 +56,7 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
     @sync @distributed for p in workers()
         lx_p, rx_p, ly_p, ry_p = distChunker(p)
         localpart(Z)[padd+1:Nx_loc+padd,:,
-                     padd+1:Ny_loc+padd,:,1] .= -im/sqrt(2) .* inv_S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
+                     padd+1:Ny_loc+padd,:] .= -im/sqrt(2) .* inv_S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
         localpart(dZdt)[:,:,:,:,1]           .= 1/sqrt(2)   .* S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
     end
 
@@ -92,9 +92,9 @@ function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
             y1 = y-r0
             y2 = y+r0
             δϕ = f_amp*sin(κ*x)sin(κ*y)
-            ϕ[j,k,1] = η #+ im*δϕ
+            ϕ[j,k] = η #+ im*δϕ
             dϕdt[j-padd,k-padd,1] = 0
-            ψ[j,k,1] = amp*(exp( -width/(vx^2 + vy^2)
+            ψ[j,k] = amp*(exp( -width/(vx^2 + vy^2)
                                * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )       
                           + exp( -width/(vx^2 + vy^2) 
                                * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
@@ -231,7 +231,7 @@ export renormalization
     #we only use the value of Z from the boundary.
     #More specifically, bottom right corner of lattice is used (could be any point on boundary)
 function renormalization(Z)
-    meanSqrRenorm = sum(abs2,Z[end-padd,:,end-padd,:,1])
+    meanSqrRenorm = sum(abs2,Z[end-padd,:,end-padd,:])
     println("meanSqrRenorm = ",meanSqrRenorm)#!
 return meanSqrRenorm
 end
@@ -246,7 +246,7 @@ function zeroPointEnergy(Z,dZdt)
     Z_partial = Array{ComplexF64,4}(undef,2,Nx,2,Ny)
     dZdt_partial = Array{ComplexF64,2}(undef,Nx,Ny)
     #Fetch from the corner chunk
-    Z_partial .= @views Z[end-padd-1:end-padd,:,end-padd-1:end-padd,:,1]
+    Z_partial .= @views Z[end-padd-1:end-padd,:,end-padd-1:end-padd,:]
     dZdt_partial .= @views dZdt[end,:,end,:,1]
 
         #Calculate zPE

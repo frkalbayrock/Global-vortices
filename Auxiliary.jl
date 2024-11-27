@@ -125,12 +125,12 @@ end
 #---Transfer Functions
 #Data exchange initiator to fill paddings with updated data from neighboring blocks
 export update_Paddings!
-function update_Paddings!(ϕ,ψ,Z,t)
+function update_Paddings!(ϕ,ψ,Z)
 
     @sync @distributed for _ in workers()
-        update_Padds!(ϕ,t)
-        update_Padds!(ψ,t)
-        update_Padds!(Z,t)
+        update_Padds!(ϕ)
+        update_Padds!(ψ)
+        update_Padds!(Z)
     end
 
     # @time begin
@@ -146,40 +146,40 @@ end
 
 
 
-function update_Padds!(f::DArray{<:Number, 3},t::Int)
+function update_Padds!(f::DArray{<:Number, 2})
 
     #Find neighbors
     n_left, n_right, n_bottom, n_top = find_neighbours(myid())
 
     #!we'll add @views at some point.
     #Left padding
-    localpart(f)[1:padd, padd+1:Ny_loc+padd, t]            .= @fetchfrom n_left   localpart(f)[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd, t]
+    localpart(f)[1:padd, padd+1:Ny_loc+padd]            .= @fetchfrom n_left   localpart(f)[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd]
     #Right padding
-    localpart(f)[Nx_loc+padd+1:end, padd+1:Ny_loc+padd, t] .= @fetchfrom n_right  localpart(f)[padd+1:padding_size, padd+1:Ny_loc+padd, t]
+    localpart(f)[Nx_loc+padd+1:end, padd+1:Ny_loc+padd] .= @fetchfrom n_right  localpart(f)[padd+1:padding_size, padd+1:Ny_loc+padd]
     #Bottom padding
-    localpart(f)[padd+1:Nx_loc+padd, 1:padd, t]            .= @fetchfrom n_bottom localpart(f)[padd+1:Nx_loc+padd, Ny_loc+padd:end-padd, t]
+    localpart(f)[padd+1:Nx_loc+padd, 1:padd]            .= @fetchfrom n_bottom localpart(f)[padd+1:Nx_loc+padd, Ny_loc+padd:end-padd]
     #Top padding
-    localpart(f)[padd+1:Nx_loc+padd, Ny_loc+padd+1:end, t] .= @fetchfrom n_top    localpart(f)[padd+1:Nx_loc+padd, padd+1:padding_size, t]
+    localpart(f)[padd+1:Nx_loc+padd, Ny_loc+padd+1:end] .= @fetchfrom n_top    localpart(f)[padd+1:Nx_loc+padd, padd+1:padding_size]
 
 return nothing
 end
 
 
 #Updating 
-function update_Padds!(Z::DArray{ComplexF64, 5},t::Int)
+function update_Padds!(Z::DArray{ComplexF64, 4})
 
     #Find neighbors
     n_left, n_right, n_bottom, n_top = find_neighbours(myid())
 
     #!we'll add @views at some point.
     #Left padding
-    localpart(Z)[1:padd, :, padd+1:Ny_loc+padd, :, t]            .= @fetchfrom n_left   localpart(Z)[Nx_loc+padd:end-padd, :, padd+1:Ny_loc+padd, :, t]
+    localpart(Z)[1:padd, :, padd+1:Ny_loc+padd, :]            .= @fetchfrom n_left   localpart(Z)[Nx_loc+padd:end-padd, :, padd+1:Ny_loc+padd, :]
     #Right padding
-    localpart(Z)[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :, t] .= @fetchfrom n_right  localpart(Z)[padd+1:padding_size, :, padd+1:Ny_loc+padd, :, t]
+    localpart(Z)[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :] .= @fetchfrom n_right  localpart(Z)[padd+1:padding_size, :, padd+1:Ny_loc+padd, :]
     #Bottom padding
-    localpart(Z)[padd+1:Nx_loc+padd, :, 1:padd, :, t]            .= @fetchfrom n_bottom localpart(Z)[padd+1:Nx_loc+padd, :, Ny_loc+padd:end-padd, :, t]
+    localpart(Z)[padd+1:Nx_loc+padd, :, 1:padd, :]            .= @fetchfrom n_bottom localpart(Z)[padd+1:Nx_loc+padd, :, Ny_loc+padd:end-padd, :]
     #Top padding
-    localpart(Z)[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :, t] .= @fetchfrom n_top    localpart(Z)[padd+1:Nx_loc+padd, :, padd+1:padding_size, :, t]
+    localpart(Z)[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :] .= @fetchfrom n_top    localpart(Z)[padd+1:Nx_loc+padd, :, padd+1:padding_size, :]
 
 return nothing
 end

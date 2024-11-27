@@ -52,12 +52,12 @@ end
 
 #--Initilize the Global Lattice Arrays 
     #Standards:  ϕ and ψ are in 2D lattice // Z can be on the flattened 1D N^2 lattice or native 2D lattice
-    const ϕ = im.*dzeros(Nx_padd,Ny_padd,2)
-    const ψ =     dzeros(Nx_padd,Ny_padd,2)
+    const ϕ = im.*dzeros(Nx_padd,Ny_padd)
+    const ψ =     dzeros(Nx_padd,Ny_padd)
     const dϕdt = im.*dzeros(Nx,Ny,2)
     const dψdt =     dzeros(Nx,Ny,2)
-    const Z = DArray((Nx_padd,Nx,Ny_padd,Ny,2),workers(),[nprocs_perdim[1],1,nprocs_perdim[2],1,1]) do I
-        im*zeros(length(I[1]),length(I[2]),length(I[3]),length(I[4]),length(I[5]))
+    const Z = DArray((Nx_padd,Nx,Ny_padd,Ny),workers(),[nprocs_perdim[1],1,nprocs_perdim[2],1]) do I
+        im*zeros(length(I[1]),length(I[2]),length(I[3]),length(I[4]))
     end
     const dZdt = DArray((Nx,Nx,Ny,Ny,2),workers(),[nprocs_perdim[1],1,nprocs_perdim[2],1,1]) do I
         im*zeros(length(I[1]),length(I[2]),length(I[3]),length(I[4]),length(I[5]))
@@ -104,12 +104,12 @@ function run_ev()
     open("data/initial_psi.dat","w") do ioψ
     for p in workers()
         lx_p, rx_p, ly_p, ry_p = distChunker(p)
-        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
-        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
+        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd]
+        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd]
     end
     writedlm(ioϕ,ϕ_gl[:,:])
     writedlm(ioψ,ψ_gl[:,:])
-    # writedlm(ioψ,ψ[:,:,1]) #! this doesn't work for me since there are paddings 
+    # writedlm(ioψ,ψ[:,:]) #! this doesn't work for me since there are paddings 
     #                         #!either remove paddings on the plotting side or just use a separate "global" field array
     end
     end
