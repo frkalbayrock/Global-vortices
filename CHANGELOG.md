@@ -1,6 +1,9 @@
 # CHANGELOG
 
-#### v.2.0.1
+#### v2.0.2
+MPI version gets the FindVortex module. The vortex_finder() is now called every time step. 
+
+#### v2.0.1
 Found a way to get rid of the time coordinate only from the fields f (not dfdt's). Could improve memory allocations and overall performance.
 
 All the changes listed:

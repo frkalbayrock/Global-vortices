@@ -1,18 +1,20 @@
 module Time_Evolution
 
 include("Parameters.jl")
-using .Parameters 
-using MPI
 include("MPIAux.jl")
-using .MPIAux
 include("Energy.jl")
-using .Energy
 include("IndexMap.jl")
-using .IndexMap
 include("Auxiliary.jl")
-using .Auxiliary_Routines
 include("Constraints.jl")
+include("FindVortex.jl")
+using MPI
+using .Parameters 
+using .MPIAux
+using .Energy
+using .IndexMap
+using .Auxiliary_Routines
 using .Constraints_Conserveds
+using .FindVortex
 using DelimitedFiles
 using OffsetArrays
 using Profile
@@ -56,6 +58,7 @@ function time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
         ψdataIO = open("data/psi.dat","w")
         energyIO = open("data/energy.dat","w")
         ZedIO = open("data/energies/ZED.dat","w")
+        vortexIO = open("data/vortices.dat","w")
     end
 
 
@@ -89,6 +92,21 @@ function time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
                     Main.ψ_gl[lx_loc:rx_loc,ly_loc:ry_loc] .= ψ_loc[:,:]
                 end
 
+                #----Check for Vortices----#
+                vortex_pos, anti_vortex_pos = vortex_finder(Main.ϕ_gl)
+
+                #Record vortices
+                if length(vortex_pos) != length(anti_vortex_pos)
+                    error("Number of vortices doesn't match anti-vortices!")
+                elseif (length(vortex_pos)==0 && length(anti_vortex_pos)==0)
+                    println(vortexIO,"[]")   #vortex 
+                    println(vortexIO,"[]")   #anti-vortex
+                else
+                    println(vortexIO,vortex_pos)         #vortex
+                    println(vortexIO,anti_vortex_pos)    #anti-vortex
+                end
+
+                #Record field and energy data
                 writedlm(ϕdataIO, @views Main.ϕ_gl[:,:])
                 writedlm(ψdataIO, @views Main.ψ_gl[:,:])
                 writedlm(energyIO,totalE)
