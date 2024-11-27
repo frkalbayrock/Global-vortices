@@ -13,11 +13,11 @@ const comm_cart = MPI.Cart_create(comm, nprocs_perdim; periodic=periods, reorder
 # const coords_cart = MPI.Cart_coords(comm_cart, myrank)
 
 const buffRecv_ϕ_x = im*zeros(padd,Ny_loc)
-const buffRecv_ψ_x = zeros(padd,Ny_loc)
+const buffRecv_ψ_x =    zeros(padd,Ny_loc)
 const buffRecv_Z_x = im*zeros(padd, Nx, Ny_loc, Ny) #this is along x-direction
-const buffRecv_ϕ_y = im*zeros(Ny_loc,padd)
-const buffRecv_ψ_y = zeros(Ny_loc,padd)
-const buffRecv_Z_y = im*zeros(Ny_loc, Nx, padd, Ny) #this is along y-direction
+const buffRecv_ϕ_y = im*zeros(Nx_loc,padd)
+const buffRecv_ψ_y =    zeros(Nx_loc,padd)
+const buffRecv_Z_y = im*zeros(Nx_loc, Nx, padd, Ny) #this is along y-direction
 
 
 export chunker

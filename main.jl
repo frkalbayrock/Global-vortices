@@ -69,11 +69,11 @@ function run_ev()
 
     #--Initilize the Field Arrays and
     #Standards:  ϕ and ψ are in 2D lattice // Z is flattened 1D N^2 lattice (for now)
-    ϕ = im.*zeros(Nx_loc+padding,Ny_loc+padding)
-    ψ =     zeros(Nx_loc+padding,Ny_loc+padding)
+    ϕ =   im.* zeros(Nx_loc+padding,Ny_loc+padding)
+    ψ =        zeros(Nx_loc+padding,Ny_loc+padding)
     dϕdt = im.*zeros(Nx_loc+padding,Ny_loc+padding,2)
     dψdt =     zeros(Nx_loc+padding,Ny_loc+padding,2)
-    ZED =     zeros(Nx_loc+padding,Ny_loc+padding,2)
+    ZED =      zeros(Nx_loc+padding,Ny_loc+padding,2)
     # 2-index Z
     # Z = Array{ComplexF64,3}(undef, (Nx_loc)*(Ny_loc),Nx*Ny,2)
     # dZdt = Array{ComplexF64,3}(undef, (Nx_loc)*(Ny_loc),Nx*Ny,2)

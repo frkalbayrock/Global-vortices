@@ -41,7 +41,7 @@ end
 
 #--Parallel: MPI Parameters
 const ndims = 2
-const nprocs_perdim = [2 2]
+const nprocs_perdim = [4 2]
 const periods = [true true]
 #--Parallel: Local array sizes and indices for OffsetArrays
 const Nx_loc = Int(Nx/nprocs_perdim[1])
