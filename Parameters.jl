@@ -1,5 +1,5 @@
 module Parameters
-export dx,dy,dt,N,Nx,Ny,lx,rx,ly,ry,nt,nsnaps
+export dx,dy,dt,N,Nx,Ny,L,lx,rx,ly,ry,nt,nsnaps, dt_half
 export λ,α,β,η,m_ρ,m_ϕ,m_ψ
 export ndims, nprocs_perdim, periods
 export Nx_loc, Ny_loc, padding, padd
@@ -17,6 +17,8 @@ const ry=rx
 const dx=0.4
 const dy=dx
 const dt=dx/50.0
+const dt_half=dt/2
+const L=Nx*dx
 const nt=2000
 #!maybe add L_x and L_y later (if needed)
 

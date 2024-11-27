@@ -98,6 +98,10 @@ function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
     vy=0.4
     r0=1.25
     γ=1/sqrt(1-(vx^2+vy^2))
+    #!fluctuations
+    κ=2*2pi/L
+    f_amp = 0.25
+    
     #ϕ and ψ i.c.
     for j in padd+1:Nx_loc+padd
         x = (lx_p+(j-padd)-1)*dx
@@ -107,7 +111,8 @@ function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
             y = (ly_p+(k-padd)-1)*dy
             y1 = y-r0
             y2 = y+r0
-            ϕ[j,k] = η
+            δϕ = f_amp*sin(κ*x)sin(κ*y)
+            ϕ[j,k] = η #+ im*δϕ
             dϕdt[j,k,1] = 0
             ψ[j,k] = amp*(exp( -width/(vx^2 + vy^2)
                                 * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )

@@ -123,7 +123,6 @@ end
 
 
 function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
-    dt_half =dt/2   #!not sure yet if i wanna keep them. harder to read.
     for j=padd+1:Nx_loc+padd
         for k=padd+1:Ny_loc+padd
             ϕ[j,k] = ϕ[j,k] + dt_half*( dϕdt[j,k,t] ) 
