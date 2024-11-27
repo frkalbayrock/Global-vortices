@@ -30,8 +30,8 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
     ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
 
     #!For now let's just calculate the omega matrix on a single core. 
-    recvbuff_ψ = @views MPI.gather(ψ[padd+1:padd+Nx_loc,padd+1:padd+Ny_loc,1], comm; root=0)
-    recvbuff_ϕ = @views MPI.gather(ϕ[padd+1:padd+Nx_loc,padd+1:padd+Ny_loc,1], comm; root=0)
+    recvbuff_ψ = @views MPI.gather(ψ[padd+1:padd+Nx_loc,padd+1:padd+Ny_loc], comm; root=0)
+    recvbuff_ϕ = @views MPI.gather(ϕ[padd+1:padd+Nx_loc,padd+1:padd+Ny_loc], comm; root=0)
     #Reduce ϕ and ψ on master for calculation of Z
     if myrank==0
         for rank=0:nprocs-1
@@ -59,7 +59,7 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
 
     #Distribute Z for domain decomposition
     if myrank==0
-        @views Z[lx_l:rx_l,:,ly_l:ry_l,:,1]    = -im/sqrt(2) .* inv_S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
+        @views Z[lx_l:rx_l,:,ly_l:ry_l,:]    = -im/sqrt(2) .* inv_S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
         @views dZdt[lx_l:rx_l,:,ly_l:ry_l,:,1] =   1/sqrt(2) .* S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
 
         #---Send Z
@@ -79,20 +79,12 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
         recvdata = zeros(Nx_loc,Nx,Ny_loc,Ny)
         MPI.Recv!(recvdata,comm; source=0,tag=1)
         Z[lx_l:rx_l,:,
-          ly_l:ry_l,:,1] .= -im/sqrt(2) .* recvdata
+          ly_l:ry_l,:] .= -im/sqrt(2) .* recvdata
         MPI.Recv!(recvdata,comm; source=0,tag=2)
         dZdt[lx_l:rx_l,:,
              ly_l:ry_l,:,1] .= 1/sqrt(2) .* recvdata
     end
 
-
-    # #Z (ρ) i.c.
-    # for J=1:N^2
-    #     for K=1:N^2
-    #         Z[J,K,1]=-im/sqrt(2) * inv_S_Ωzero[J,K]
-    #         dZdt[J,K,1] = 1/sqrt(2) * S_Ωzero[J,K]
-    #     end
-    # end
 
 end
 
@@ -115,9 +107,9 @@ function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
             y = (ly_p+(k-padd)-1)*dy
             y1 = y-r0
             y2 = y+r0
-            ϕ[j,k,1] = η
+            ϕ[j,k] = η
             dϕdt[j,k,1] = 0
-            ψ[j,k,1] = amp*(exp( -width/(vx^2 + vy^2)
+            ψ[j,k] = amp*(exp( -width/(vx^2 + vy^2)
                                 * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )
                         + exp( -width/(vx^2 + vy^2) 
                                 * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
@@ -255,7 +247,7 @@ function renormalization(Z)
 
     #Calculate on the corner chunk
     if myrank==nprocs-1
-        meanSqrRenorm = sum(abs2,Z[rx_l,:,ry_l,:,1])
+        meanSqrRenorm = sum(abs2,Z[rx_l,:,ry_l,:])
     else
         meanSqrRenorm = 0.0
     end
@@ -283,8 +275,8 @@ function zeroPointEnergy(Z,dZdt)
         for l=1:Nx
             for m=1:Ny
                 kEZRen = kEZRen + ( abs2( dZdt[rx_l,l,ry_l,m,1] ) )/2
-                gEZRen = gEZRen + ( abs2( (Z[rx_l,l,ry_l,m,1] - Z[rx_l-1,l,ry_l,m,1])/dx ) 
-                                  + abs2( (Z[rx_l,l,ry_l,m,1] - Z[rx_l,l,ry_l-1,m,1])/dy ) )/2
+                gEZRen = gEZRen + ( abs2( (Z[rx_l,l,ry_l,m] - Z[rx_l-1,l,ry_l,m])/dx ) 
+                                  + abs2( (Z[rx_l,l,ry_l,m] - Z[rx_l,l,ry_l-1,m])/dy ) )/2
                 pEZRen = pEZRen + m_ρ^2*( abs2(Z[rx_l,l,ry_l,m,1]) )/2
             end
         end

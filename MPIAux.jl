@@ -56,40 +56,40 @@ const n_left, n_right, n_bottom, n_top = find_neighbours()
 #Prepares the local chunk fields to derivative operations
 #by updating the paddings built into locak chunks.
 export update_Paddings!
-function update_Paddings!(ϕ,ψ,Z,t)
-    transfer_Paddings_ϕ_ψ!(ϕ,t,buffRecv_ϕ_x,buffRecv_ϕ_y)
-    transfer_Paddings_ϕ_ψ!(ψ,t,buffRecv_ψ_x,buffRecv_ψ_y)
-    transfer_Paddings_Z!(Z,t,buffRecv_Z_x,buffRecv_Z_y)
+function update_Paddings!(ϕ,ψ,Z)
+    transfer_Paddings_ϕ_ψ!(ϕ,buffRecv_ϕ_x,buffRecv_ϕ_y)
+    transfer_Paddings_ϕ_ψ!(ψ,buffRecv_ψ_x,buffRecv_ψ_y)
+    transfer_Paddings_Z!(Z,buffRecv_Z_x,buffRecv_Z_y)
     MPI.Barrier(comm)
 end
 
 
 
 
-function transfer_Paddings_ϕ_ψ!(f,t,buffRecv_x,buffRecv_y)
+function transfer_Paddings_ϕ_ψ!(f,buffRecv_x,buffRecv_y)
 
     #Left to right
-    @views MPI.Sendrecv!(f[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd,t], n_right, 1,  #!!!!!
+    @views MPI.Sendrecv!(f[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd], n_right, 1,  #!!!!!
                     buffRecv_x, n_left, 1, comm)
-    @views f[1:padd,padd+1:Ny_loc+padd,t] .= buffRecv_x
+    @views f[1:padd,padd+1:Ny_loc+padd] .= buffRecv_x
 
 
     #Right to left
-    @views MPI.Sendrecv!(f[padd+1:2*padd, padd+1:Ny_loc+padd,t], n_left, 2, #!!!!!!!!
+    @views MPI.Sendrecv!(f[padd+1:2*padd, padd+1:Ny_loc+padd], n_left, 2, #!!!!!!!!
                     buffRecv_x, n_right, 2, comm)
-    @views f[Nx_loc+padd+1:end,padd+1:Ny_loc+padd,t] .= buffRecv_x
+    @views f[Nx_loc+padd+1:end,padd+1:Ny_loc+padd] .= buffRecv_x
 
 
     #Bottom to top
-    @views MPI.Sendrecv!(f[padd+1:Nx_loc+padd,Ny_loc+padd:end-padd,t], n_top, 3, #!!!!!!!
+    @views MPI.Sendrecv!(f[padd+1:Nx_loc+padd,Ny_loc+padd:end-padd], n_top, 3, #!!!!!!!
                     buffRecv_y, n_bottom, 3, comm)
-    @views f[padd+1:Nx_loc+padd, 1:padd, t] .= buffRecv_y
+    @views f[padd+1:Nx_loc+padd, 1:padd] .= buffRecv_y
     
 
     #Top to bottom
-    @views MPI.Sendrecv!(f[padd+1:Nx_loc+padd, padd+1:2*padd, t], n_bottom, 4,     #!!!!!
+    @views MPI.Sendrecv!(f[padd+1:Nx_loc+padd, padd+1:2*padd], n_bottom, 4,     #!!!!!
                     buffRecv_y , n_top, 4, comm)
-    @views f[padd+1:Nx_loc+padd, Ny_loc+padd+1:end, t] .= buffRecv_y
+    @views f[padd+1:Nx_loc+padd, Ny_loc+padd+1:end] .= buffRecv_y
 
 end
 
@@ -98,30 +98,30 @@ end
 
 
 
-function transfer_Paddings_Z!(Z,t,buffRecv_x,buffRecv_y)#,n_left, n_right, n_bottom, n_top)
+function transfer_Paddings_Z!(Z,buffRecv_x,buffRecv_y)#,n_left, n_right, n_bottom, n_top)
 
     #Left to right
-    @views MPI.Sendrecv!(Z[Nx_loc+padd:end-padd,:, padd+1:Ny_loc+padd,:, t], n_right, 1,   #!!!!!
+    @views MPI.Sendrecv!(Z[Nx_loc+padd:end-padd,:, padd+1:Ny_loc+padd,:], n_right, 1,   #!!!!!
                     buffRecv_x, n_left, 1, comm)
-    @views Z[1:padd,:, padd+1:Ny_loc+padd,:, t] .= buffRecv_x
+    @views Z[1:padd,:, padd+1:Ny_loc+padd,:] .= buffRecv_x
 
 
     #Right to left
-    @views MPI.Sendrecv!(Z[padd+1:2*padd,:, padd+1:Ny_loc+padd,:, t], n_left, 2,           #!!!!!
+    @views MPI.Sendrecv!(Z[padd+1:2*padd,:, padd+1:Ny_loc+padd,:], n_left, 2,           #!!!!!
                     buffRecv_x, n_right, 2, comm)
-    @views Z[Nx_loc+padd+1:end,:, padd+1:Ny_loc+padd,:, t] .= buffRecv_x
+    @views Z[Nx_loc+padd+1:end,:, padd+1:Ny_loc+padd,:] .= buffRecv_x
 
 
     #Bottom to top
-    @views MPI.Sendrecv!(Z[padd+1:Nx_loc+padd, :, Ny_loc+padd:end-padd,:, t], n_top, 3,    #!!!!!
+    @views MPI.Sendrecv!(Z[padd+1:Nx_loc+padd, :, Ny_loc+padd:end-padd,:], n_top, 3,    #!!!!!
                     buffRecv_y, n_bottom, 3, comm)
-    @views Z[padd+1:Nx_loc+padd,:,  1:padd,:, t] .= buffRecv_y
+    @views Z[padd+1:Nx_loc+padd,:,  1:padd,:] .= buffRecv_y
     
 
     #Top to bottom
-    @views MPI.Sendrecv!(Z[padd+1:Nx_loc+padd,:, padd+1:2*padd,:, t], n_bottom, 4,         #!!!!!
+    @views MPI.Sendrecv!(Z[padd+1:Nx_loc+padd,:, padd+1:2*padd,:], n_bottom, 4,         #!!!!!
                     buffRecv_y , n_top, 4, comm)
-    @views Z[padd+1:Nx_loc+padd,:, Ny_loc+padd+1:end,:, t] .= buffRecv_y
+    @views Z[padd+1:Nx_loc+padd,:, Ny_loc+padd+1:end,:] .= buffRecv_y
 
 end
 

@@ -65,7 +65,7 @@ function time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
         #Move a time step#!need synchronization
         half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
         MPI.Barrier(comm)
-        update_Paddings!(ϕ,ψ,Z,2)
+        update_Paddings!(ϕ,ψ,Z)
         leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
         half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,2)
         #Shift next time values to present time for the next step
@@ -108,11 +108,11 @@ function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
     dt_half =dt/2   #!not sure yet if i wanna keep them. harder to read.
     for j=padd+1:Nx_loc+padd
         for k=padd+1:Ny_loc+padd
-            ϕ[j,k,2] = ϕ[j,k,t] + dt_half*( dϕdt[j,k,t] ) 
-            ψ[j,k,2] = ψ[j,k,t] + dt_half*( dψdt[j,k,t] )
+            ϕ[j,k] = ϕ[j,k] + dt_half*( dϕdt[j,k,t] ) 
+            ψ[j,k] = ψ[j,k] + dt_half*( dψdt[j,k,t] )
             for l=1:Nx
                 for m=1:Ny
-                    Z[j,l,k,m,2] = Z[j,l,k,m,t] + dt_half*( dZdt[j,l,k,m,t] )
+                    Z[j,l,k,m] = Z[j,l,k,m] + dt_half*( dZdt[j,l,k,m,t] )
                 end
             end
         end
@@ -125,7 +125,7 @@ function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
     for j=padd+1:Nx_loc+padd
         for k=padd+1:Ny_loc+padd
             #Calculate fluxes for ϕ and ψ
-            ϕ_flux , ψ_flux =  @views fluxes_ϕ_ψ(ϕ[:,:,2],ψ[:,:,2],Z[:,:,:,:,2],meanSqrRenorm,j,k)
+            ϕ_flux , ψ_flux =  @views fluxes_ϕ_ψ(ϕ[:,:],ψ[:,:],Z[:,:,:,:],meanSqrRenorm,j,k)
             dϕdt[j,k,2] = dϕdt[j,k,1] + dt*( ϕ_flux )
             dψdt[j,k,2] = dψdt[j,k,1] + dt*( ψ_flux )
             for l=1:Nx
@@ -154,16 +154,16 @@ return ϕ_flux ,ψ_flux
 end
 
 function flux_Z(ϕ,ψ,Z,j,l,k,m)
-    Z_flux = ( (Z[j+1,l,k,m,2] - 2Z[j,l,k,m,2] + Z[j-1,l,k,m,2])/dx^2 
-            + (Z[j,l,k+1,m,2] - 2Z[j,l,k,m,2] + Z[j,l,k-1,m,2])/dy^2
-            - ( m_ρ^2 + α*abs2(ϕ[j,k,2]) + β*ψ[j,k,2]^2 ) * Z[j,l,k,m,2] )
+    Z_flux = ( (Z[j+1,l,k,m] - 2Z[j,l,k,m] + Z[j-1,l,k,m])/dx^2 
+             + (Z[j,l,k+1,m] - 2Z[j,l,k,m] + Z[j,l,k-1,m])/dy^2
+            - ( m_ρ^2 + α*abs2(ϕ[j,k]) + β*ψ[j,k]^2 ) * Z[j,l,k,m] )
 end
 
 function updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
     @views begin
-        ϕ[:,:,1] .= ϕ[:,:,2]
-        ψ[:,:,1] .= ψ[:,:,2]
-        Z[:,:,:,:,1] .= Z[:,:,:,:,2]
+        # ϕ[:,:,1] .= ϕ[:,:,2]
+        # ψ[:,:,1] .= ψ[:,:,2]
+        # Z[:,:,:,:,1] .= Z[:,:,:,:,2]
         dϕdt[:,:,1] .= dϕdt[:,:,2]
         dψdt[:,:,1] .= dψdt[:,:,2]
         dZdt[:,:,:,:,1] .= dZdt[:,:,:,:,2]
@@ -572,8 +572,9 @@ end #module
     #     dψdt[:,1] .= dψdt[:,2]
     #     dZdt[:,:,1] .= dZdt[:,:,2]
     # end 
+    #
 
-    # end #module
+# end #module
 
 
 

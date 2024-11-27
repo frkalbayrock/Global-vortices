@@ -1,5 +1,32 @@
 # CHANGELOG
 
+#### v.2.0.1
+Found a way to get rid of the time coordinate only from the fields f (not dfdt's). Could improve memory allocations and overall performance.
+
+All the changes listed:
+
+Energy.jl:
+- update_Paddings() no longer need argument which is deleted here.
+- All the fields inside energy_calculation() now have only space coordinates; all the time dependencies are removed.
+
+Evolution.jl:
+- update_Paddings() no longer need argument which is deleted here.
+- All the explicit time dependencies from the fields are removed in time_evolution(), half_step(), leap_forward(), flux_Z(), updateForNextStep().
+
+IC.jl:
+- All the explicit time dependencies from the fields are removed in initialConditions(), ic_ϕ,ψ(), renormalization(), zeroPointEnergy().
+- Some cosmetic changes and some extra stuff removed.
+
+main.jl:
+- Definitions of the fields ϕ, ψ and Z were changed to remove the time coordinate.
+- Writing the information on a file part is updated as other DArray version of the code with println()'s instead of writedlm().
+
+MPIAUX.jl:
+- updatePaddings(), transfer_Paddings_f() no longer have "t" as an argument and inside every "t" is removed.
+
+#### v.2.0.0
+Version name updated. No other changes. Also this version don't have its own commit. We put here just for book keeping. 
+
 #### v.0.3.8
 MPI Code updated --> Z_gl and dZdt_gl are no longer defined. Should improve memory usage.
 

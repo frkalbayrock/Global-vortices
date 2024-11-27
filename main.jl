@@ -49,11 +49,11 @@ function run_ev()
     if myrank==0
         open("data/info.dat","w") do io
             #--Write Info For Graphs--!
-            write(io,N,"x",N,"\n")  #number of lattice points
-            writedlm(io,dx)         #lattice spacing
-            writedlm(io,dt)         #time spacing
-            writedlm(io,nt)         #number of time steps
-            writedlm(io,nsnaps)     #number of snapshots
+            println(io,Nx,"x",Ny)  #number of lattice points
+            println(io,dx)         #lattice spacing
+            println(io,dt)         #time spacing
+            println(io,nt)         #number of time steps
+            println(io,nsnaps)     #number of snapshots
         end
         #Info
         println("Number of lattice points: ",Nx," x ",Ny)
@@ -69,8 +69,8 @@ function run_ev()
 
     #--Initilize the Field Arrays and
     #Standards:  ϕ and ψ are in 2D lattice // Z is flattened 1D N^2 lattice (for now)
-    ϕ = im.*zeros(Nx_loc+padding,Ny_loc+padding,2)
-    ψ =     zeros(Nx_loc+padding,Ny_loc+padding,2)
+    ϕ = im.*zeros(Nx_loc+padding,Ny_loc+padding)
+    ψ =     zeros(Nx_loc+padding,Ny_loc+padding)
     dϕdt = im.*zeros(Nx_loc+padding,Ny_loc+padding,2)
     dψdt =     zeros(Nx_loc+padding,Ny_loc+padding,2)
     ZED =     zeros(Nx_loc+padding,Ny_loc+padding,2)
@@ -78,7 +78,7 @@ function run_ev()
     # Z = Array{ComplexF64,3}(undef, (Nx_loc)*(Ny_loc),Nx*Ny,2)
     # dZdt = Array{ComplexF64,3}(undef, (Nx_loc)*(Ny_loc),Nx*Ny,2)
     # 4-index Z
-    Z =    Array{ComplexF64,5}(undef, Nx_loc+padding, Nx, Ny_loc+padding, Ny, 2)
+    Z =    Array{ComplexF64,4}(undef, Nx_loc+padding, Nx, Ny_loc+padding, Ny)
     dZdt = Array{ComplexF64,5}(undef, Nx_loc+padding, Nx, Ny_loc+padding, Ny, 2)
 
 
