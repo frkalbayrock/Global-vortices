@@ -52,24 +52,36 @@ end
 
 #--Initilize the Global Lattice Arrays 
     #Standards:  ϕ and ψ are in 2D lattice // Z can be on the flattened 1D N^2 lattice or native 2D lattice
-    const ϕ = im.*dzeros(Nx_padd,Ny_padd,2)
-    const ψ =     dzeros(Nx_padd,Ny_padd,2)
-    const dϕdt = im.*dzeros(Nx,Ny,2)
-    const dψdt =     dzeros(Nx,Ny,2)
-    const Z = DArray((Nx_padd,Nx,Ny_padd,Ny,2),workers(),[nprocs_perdim[1],1,nprocs_perdim[2],1,1]) do I
-        im*zeros(length(I[1]),length(I[2]),length(I[3]),length(I[4]),length(I[5]))
-    end
-    const dZdt = DArray((Nx,Nx,Ny,Ny,2),workers(),[nprocs_perdim[1],1,nprocs_perdim[2],1,1]) do I
-        im*zeros(length(I[1]),length(I[2]),length(I[3]),length(I[4]),length(I[5]))
-    end
-    const ZED = dzeros(Nx,Ny)
-    #Global fields only for recording purposes --#!might change later if we can find an efficient way of doing it. 
-    const ϕ_gl = im*zeros(Nx,Ny)
-    const ψ_gl =    zeros(Nx,Ny)
+    #!NEXT TIME STEP
+    # const ϕ_1 = im.*dzeros(Nx,Ny)
+    # const ψ_1 =     dzeros(Nx,Ny)
+    const dϕdt_1 = im.*dzeros(Nx,Ny)
+    const dψdt_1 =     dzeros(Nx,Ny)
+
+
+
+    # const Z = DArray((Nx_padd,Nx,Ny_padd,Ny,2),workers(),[nprocs_perdim[1],1,nprocs_perdim[2],1,1]) do I
+    #     im*zeros(length(I[1]),length(I[2]),length(I[3]),length(I[4]),length(I[5]))
+    # end
+    # const dZdt = DArray((Nx,Nx,Ny,Ny,2),workers(),[nprocs_perdim[1],1,nprocs_perdim[2],1,1]) do I
+    #     im*zeros(length(I[1]),length(I[2]),length(I[3]),length(I[4]),length(I[5]))
+    # end
+    # const ZED = dzeros(Nx,Ny)
+    # #Global fields only for recording purposes --#!might change later if we can find an efficient way of doing it. 
+    # const ϕ_gl = im*zeros(Nx,Ny)
+    # const ψ_gl =    zeros(Nx,Ny)
 
 
 
 function run_ev()
+
+    #!CURRENT TIME STEP
+    @everywhere workers() begin
+        const ϕ =    im*zeros(Nx_loc+padding_size, Ny_loc+padding_size)
+        const ψ =       zeros(Nx_loc+padding_size, Ny_loc+padding_size)
+        const dϕdt = im*zeros(Nx_loc, Ny_loc)
+        const dψdt =    zeros(Nx_loc, Ny_loc)
+    end
 
     #--Information about the run 
     open("data/info.dat","w") do io
@@ -97,56 +109,56 @@ function run_ev()
 
 
     #----Initial Conditions----#
-    @time initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
+    # @time initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
+    @time initialConditions!(dϕdt_1,dψdt_1)
 
-    #Record initial conditions #!TEST IT FOR SPEED/ALLOCATIONS
-    open("data/initial_phi.dat","w") do ioϕ
-    open("data/initial_psi.dat","w") do ioψ
-    for p in workers()
-        lx_p, rx_p, ly_p, ry_p = distChunker(p)
-        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
-        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
-    end
-    writedlm(ioϕ,ϕ_gl[:,:])
-    writedlm(ioψ,ψ_gl[:,:])
-    # writedlm(ioψ,ψ[:,:,1]) #! this doesn't work for me since there are paddings 
-    #                         #!either remove paddings on the plotting side or just use a separate "global" field array
-    end
-    end
+#     #Record initial conditions #!TEST IT FOR SPEED/ALLOCATIONS
+#     open("data/initial_phi.dat","w") do ioϕ
+#     open("data/initial_psi.dat","w") do ioψ
+#     for p in workers()
+#         lx_p, rx_p, ly_p, ry_p = distChunker(p)
+#         ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
+#         ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
+#     end
+#     writedlm(ioϕ,ϕ_gl[:,:])
+#     writedlm(ioψ,ψ_gl[:,:])
+#     # writedlm(ioψ,ψ[:,:,1]) #! this doesn't work for me since there are paddings 
+#     #                         #!either remove paddings on the plotting side or just use a separate "global" field array
+#     end
+#     end
 
 
 
-    # #!Turn on if you wanna check constraints - skipping for now
-    # @views Z_t = mapZTo2Index(Z_gl[:,:,:,:])
-    # @views dZdt_t = mapZTo2Index(dZdt_gl[:,:,:,:])
-    # @views constraints_checker(Z_t[:,:],dZdt_t[:,:])
-    # @views conserved_checker(Z_t[:,:],dZdt_t[:,:])
+#     # #!Turn on if you wanna check constraints - skipping for now
+#     # @views Z_t = mapZTo2Index(Z_gl[:,:,:,:])
+#     # @views dZdt_t = mapZTo2Index(dZdt_gl[:,:,:,:])
+#     # @views constraints_checker(Z_t[:,:],dZdt_t[:,:])
+#     # @views conserved_checker(Z_t[:,:],dZdt_t[:,:])
 
 
     #----Renormalization----#
-    meanSqrRenorm =  renormalization(Z)
-    zPE = zeroPointEnergy(Z,dZdt)
+    meanSqrRenorm =  0#renormalization(Z)
+    zPE = 0#zeroPointEnergy(Z,dZdt)
 
 
-    #----Initial Energy----#
-    totalE = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
-    writedlm(ioZED,ZED)
-    println("Total initial energy: ",totalE)
+#     #----Initial Energy----#
+#     totalE = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
+#     writedlm(ioZED,ZED)
+#     println("Total initial energy: ",totalE)
 
 
     #----Time Evolution----#
-    @time time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE,ϕ_gl,ψ_gl)
-#    Profile.Allocs.@profile sample_rate=0.01 time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE,ϕ_gl,ψ_gl)
-#     PProf.Allocs.pprof(from_c=false) 
+    # @time time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE,ϕ_gl,ψ_gl)
+    @time time_evolve!(dϕdt_1,dψdt_1,meanSqrRenorm,zPE)
 
 
-    #----Check for Vortices----#
-    # vortex_pos, anti_vortex_pos = vortex_finder(ϕ)
+#     #----Check for Vortices----#
+#     # vortex_pos, anti_vortex_pos = vortex_finder(ϕ)
  
 
-    #Close data files
-    close(ioϕ)
-    close(ioψ)
+#     #Close data files
+#     close(ioϕ)
+#     close(ioψ)
 
 end 
 

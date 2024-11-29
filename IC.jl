@@ -17,58 +17,56 @@ using Distributed
 #initialConditions sets the initial conditions for the fields ϕ,ψ,Z and calculates the renormalization factor
 export initialConditions!
 #Set initial conditions for the fields ϕ, ψ, ρ
-function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
+# function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
+function initialConditions!(dϕdt_1,dψdt_1)
 
 
     #---Set i.c. for ϕ and ψ locally
-    @sync @distributed for _ in workers()
-        ic_ϕ_ψ!(localpart(ϕ),localpart(ψ),localpart(dϕdt),localpart(dψdt))
-    end
+    @everywhere workers() ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
+
+    
+
+    # #---Collect ϕ and ψ to global fields for Ω calculation
+    # for p in workers()
+    #     lx_p, rx_p, ly_p, ry_p = distChunker(p)
+    #     ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
+    #     ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
+    # end
 
 
 
-    #---Collect ϕ and ψ to global fields for Ω calculation
-    for p in workers()
-        lx_p, rx_p, ly_p, ry_p = distChunker(p)
-        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
-        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
-    end
+    # #---Calculate Ω
+    # #2-index to 1-index mapping
+    # ϕ_s = @views flattenDimension(ϕ_gl[:,:])
+    # ψ_s = @views flattenDimension(ψ_gl[:,:])
+    # #Get Sqrt(Omega) and its inverse matrices
+    # S_Ωzero, inv_S_Ωzero = omegaIC(ϕ_s,ψ_s)
 
 
 
-    #---Calculate Ω
-    #2-index to 1-index mapping
-    ϕ_s = @views flattenDimension(ϕ_gl[:,:])
-    ψ_s = @views flattenDimension(ψ_gl[:,:])
-    #Get Sqrt(Omega) and its inverse matrices
-    S_Ωzero, inv_S_Ωzero = omegaIC(ϕ_s,ψ_s)
+    # #---Set i.c. for global Z
+    # #4-indexed Z and Ω
+    # S_Ωzero_f = mapZTo4Index(S_Ωzero)
+    # inv_S_Ωzero_f = mapZTo4Index(inv_S_Ωzero)
 
 
 
-    #---Set i.c. for global Z
-    #4-indexed Z and Ω
-    S_Ωzero_f = mapZTo4Index(S_Ωzero)
-    inv_S_Ωzero_f = mapZTo4Index(inv_S_Ωzero)
-
-
-
-    #---Chunk Z and send it to workers
-    @sync @distributed for p in workers()
-        lx_p, rx_p, ly_p, ry_p = distChunker(p)
-        localpart(Z)[padd+1:Nx_loc+padd,:,
-                     padd+1:Ny_loc+padd,:,1] .= -im/sqrt(2) .* inv_S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
-        localpart(dZdt)[:,:,:,:,1]           .= 1/sqrt(2)   .* S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
-    end
+    # #---Chunk Z and send it to workers
+    # @sync @distributed for p in workers()
+    #     lx_p, rx_p, ly_p, ry_p = distChunker(p)
+    #     localpart(Z)[padd+1:Nx_loc+padd,:,
+    #                  padd+1:Ny_loc+padd,:,1] .= -im/sqrt(2) .* inv_S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
+    #     localpart(dZdt)[:,:,:,:,1]           .= 1/sqrt(2)   .* S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
+    # end
 
 
 end
 
 
-# @everywhere workers() 
-function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
-
+@everywhere workers() function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
+# function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
     #Find the chunk's physical coordinates and physical ends
-    lx_p, rx_p, ly_p, ry_p = distChunker(myid())
+    lx_p, rx_p, ly_p, ry_p = chunker(myid())
 
 
     #ψ parameters

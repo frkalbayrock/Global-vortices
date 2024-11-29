@@ -17,7 +17,7 @@ const dy=dx
 const dt=dx/50.0
 const dt_half=dt/2
 const L=Nx*dx
-const nt=2000
+const nt=1#2000
 #!maybe add L_x and L_y later (if needed)
 
 #--Couplings and Masses #!TO BE FINE_TUNED

@@ -25,7 +25,8 @@ using JLD2
 
 # 4-index Notation (Leap-frog)
 export time_evolve!
-function time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE,ϕ_gl,ψ_gl)
+# function time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE,ϕ_gl,ψ_gl)
+function time_evolve!(dϕdt_1,dψdt_1,meanSqrRenorm,zPE)
 
     #Snapshotting interval
     if round(nt/nsnaps,RoundDown) == 0
@@ -53,64 +54,73 @@ function time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE,ϕ_gl,ψ_gl
     for t=1:nt
         
 
+        # #Move a time step
+        # half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
+        # # @sync @distributed for _ in workers()
+        # #     half_step!(localpart(ϕ),localpart(ψ),localpart(Z),localpart(dϕdt),localpart(dψdt),localpart(dZdt),1)
+        # # end
+        # update_Paddings!(ϕ,ψ,Z,2)
+        # leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
+        # half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,2)
+        # #Shift next time values to present time for the next step
+        # updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+        
+
+
         #Move a time step
-        half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
-        # @sync @distributed for _ in workers()
-        #     half_step!(localpart(ϕ),localpart(ψ),localpart(Z),localpart(dϕdt),localpart(dψdt),localpart(dZdt),1)
-        # end
-        update_Paddings!(ϕ,ψ,Z,2)
-        leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
-        half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,2)
+        @everywhere workers() half_step!(ϕ,ψ,dϕdt,dψdt,1)
+        @everywhere workers() update_Paddings()
+        leap_forward!(dϕdt_1,dψdt_1,meanSqrRenorm)
+        @everywhere workers() half_step!(ϕ,ψ,dϕdt,dψdt,2)
         #Shift next time values to present time for the next step
-        updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+        updateForNextStep(dϕdt_1,dψdt_1)
 
 
+        # # Take a snap
+        # if mod(t,snapInterval) == 0
 
-        # Take a snap
-        if mod(t,snapInterval) == 0
-
-            #Calculate energy
-            totalE = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
+        #     #Calculate energy
+        #     totalE = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
             
-            #Update global fields for recording
-            for p in workers()
-                lx_p, rx_p, ly_p, ry_p = distChunker(p)
-                ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
-                ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
-            end
+        #     #Update global fields for recording
+        #     for p in workers()
+        #         lx_p, rx_p, ly_p, ry_p = distChunker(p)
+        #         ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
+        #         ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
+        #     end
 
 
 
-            #----Check for Vortices----#
-            vortex_pos, anti_vortex_pos = vortex_finder(ϕ_gl)
+        #     #----Check for Vortices----#
+        #     vortex_pos, anti_vortex_pos = vortex_finder(ϕ_gl)
 
-            #Record vortices
-            if length(vortex_pos) != length(anti_vortex_pos)
-                error("Number of vortices doesn't match anti-vortices!")
-            elseif (length(vortex_pos)==0 && length(anti_vortex_pos)==0)
-                println(vortexIO,"[]")   #vortex 
-                println(vortexIO,"[]")   #anti-vortex
-            else
-                println(vortexIO,vortex_pos)         #vortex
-                println(vortexIO,anti_vortex_pos)    #anti-vortex
-            end
+        #     #Record vortices
+        #     if length(vortex_pos) != length(anti_vortex_pos)
+        #         error("Number of vortices doesn't match anti-vortices!")
+        #     elseif (length(vortex_pos)==0 && length(anti_vortex_pos)==0)
+        #         println(vortexIO,"[]")   #vortex 
+        #         println(vortexIO,"[]")   #anti-vortex
+        #     else
+        #         println(vortexIO,vortex_pos)         #vortex
+        #         println(vortexIO,anti_vortex_pos)    #anti-vortex
+        #     end
 
 
 
-            #Record field and energy data
-            writedlm(ϕdataIO, ϕ_gl[:,:])
-            writedlm(ψdataIO, ψ_gl[:,:])
-            writedlm(energyIO,totalE)
-            # writedlm(ZedIO,ZED)
+        #     #Record field and energy data
+        #     writedlm(ϕdataIO, ϕ_gl[:,:])
+        #     writedlm(ψdataIO, ψ_gl[:,:])
+        #     writedlm(energyIO,totalE)
+        #     # writedlm(ZedIO,ZED)
 
-            #!
-            #Check constraints
-            # Z_gl_f = mapZTo2Index(Z_gl[:,:,:,:])
-            # dZdt_gl_f = mapZTo2Index(dZdt_gl[:,:,:,:])
-            # @views constraints_checker(Z_gl_f,dZdt_gl_f)
-            # @views conserved_checker(Z_gl_f,dZdt_gl_f)
+        #     #!
+        #     #Check constraints
+        #     # Z_gl_f = mapZTo2Index(Z_gl[:,:,:,:])
+        #     # dZdt_gl_f = mapZTo2Index(dZdt_gl[:,:,:,:])
+        #     # @views constraints_checker(Z_gl_f,dZdt_gl_f)
+        #     # @views conserved_checker(Z_gl_f,dZdt_gl_f)
 
-        end 
+        # end 
 
 
     end
@@ -122,15 +132,13 @@ end
 
 
 
-function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
-    @sync @distributed for _ in workers()
+@everywhere function half_step!(ϕ,ψ,dϕdt,dψdt,t)
+    if t==1
         @views begin
-        localpart(ϕ)[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,2] .= 
-                        localpart(ϕ)[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,t] + dt_half*( localpart(dϕdt)[:,:,t] ) 
-        localpart(ψ)[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,2] .= 
-                        localpart(ψ)[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,t] + dt_half*( localpart(dψdt)[:,:,t] )
-        localpart(Z)[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:,2] .= 
-                        localpart(Z)[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:,t] + dt_half*( localpart(dZdt)[:,:,:,:,t] )
+        ϕ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .= ϕ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] + dt_half*( dϕdt[:,:,t] ) 
+        ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .= ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] + dt_half*( dψdt[:,:,t] )
+        # localpart(Z)[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:,2] .= 
+        #                 localpart(Z)[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:,t] + dt_half*( localpart(dZdt)[:,:,:,:,t] )
         end
     end
 end
@@ -145,27 +153,24 @@ end
 # end
 # #!--------------------#!--------------------#!--------------------
 
-function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
+function leap_forward!(dϕdt_1,dψdt_1,meanSqrRenorm)
     @sync @distributed for _ in workers()
         for j=padd+1:Nx_loc+padd
             for k=padd+1:Ny_loc+padd
                 #Calculate fluxes for ϕ and ψ
-                ϕ_flux , ψ_flux =  @views fluxes_ϕ_ψ(localpart(ϕ)[:,:,2],
-                                                     localpart(ψ)[:,:,2],
-                                                     localpart(Z)[:,:,:,:,2],meanSqrRenorm,j,k)
-                localpart(dϕdt)[j-padd,k-padd,2] = localpart(dϕdt)[j-padd,k-padd,1] + dt*( ϕ_flux )
-                localpart(dψdt)[j-padd,k-padd,2] = localpart(dψdt)[j-padd,k-padd,1] + dt*( ψ_flux )
-                for l=1:Nx
-                    for m=1:Ny
-                        # @views Z_flux = flux_Z(ϕ[j,k,1],ψ[j,k,1],Z[:,l,:,m,1],j,k,nnl_x,nnr_x,nnl_y,nnr_y)
-                        Z_flux = flux_Z(localpart(ϕ),localpart(ψ),localpart(Z),j,l,k,m)
-                        localpart(dZdt)[j-padd,l,k-padd,m,2] = localpart(dZdt)[j-padd,l,k-padd,m,1] + dt*( Z_flux )
-                    end
-                end
+                ϕ_flux , ψ_flux =  0, 0#@views fluxes_ϕ_ψ(Main.ϕ[:,:],Main.ψ[:,:],Main.Z[:,:,:,:],meanSqrRenorm,j,k)
+                localpart(dϕdt_1)[j-padd,k-padd] = Main.dϕdt[j-padd,k-padd] + dt*( ϕ_flux )
+                localpart(dψdt_1)[j-padd,k-padd] = Main.dψdt[j-padd,k-padd] + dt*( ψ_flux )
+                # for l=1:Nx
+                #     for m=1:Ny
+                #         # @views Z_flux = flux_Z(ϕ[j,k,1],ψ[j,k,1],Z[:,l,:,m,1],j,k,nnl_x,nnr_x,nnl_y,nnr_y)
+                #         Z_flux = flux_Z(localpart(ϕ),localpart(ψ),localpart(Z),j,l,k,m)
+                #         localpart(dZdt)[j-padd,l,k-padd,m,2] = localpart(dZdt)[j-padd,l,k-padd,m,1] + dt*( Z_flux )
+                #     end
+                # end
             end
         end
     end
-
 end
 
 
@@ -193,16 +198,16 @@ end
 
 
 
-function updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+function updateForNextStep(dϕdt_1,dψdt_1)
     #Shift time coordinates
     @sync @distributed for _ in workers()
         @views begin
-            localpart(ϕ)[:,:,1] .= localpart(ϕ)[:,:,2]
-            localpart(ψ)[:,:,1] .= localpart(ψ)[:,:,2]
-            localpart(Z)[:,:,:,:,1] .= localpart(Z)[:,:,:,:,2]
-            localpart(dϕdt)[:,:,1] .= localpart(dϕdt)[:,:,2]
-            localpart(dψdt)[:,:,1] .= localpart(dψdt)[:,:,2]
-            localpart(dZdt)[:,:,:,:,1] .= localpart(dZdt)[:,:,:,:,2]
+            # localpart(ϕ)[:,:,1] .= localpart(ϕ)[:,:,2]
+            # localpart(ψ)[:,:,1] .= localpart(ψ)[:,:,2]
+            # localpart(Z)[:,:,:,:,1] .= localpart(Z)[:,:,:,:,2]
+            Main.dϕdt[:,:] .= localpart(dϕdt_1)[:,:]
+            Main.dψdt[:,:] .= localpart(dψdt_1)[:,:]
+            # Main.dZdt[:,:,:,:] .= localpart(dZdt_1)[:,:,:,:]
         end
     end
 end

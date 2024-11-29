@@ -1,5 +1,27 @@
 # CHANGELOG
 
+#### v4.0.1 - DArray mixed with Julia Parallel Update
+Trying a novel method where we mix the DArray implementation with the julia parallelization macros.
+Still work in progress. So far Z dependencies turned off just to make the proof of concept work. Just initial conditions for ϕ and ψ are set and evolved for a sinle time step. So far the concept works. 
+
+All the changes listed:
+
+Auxiliary.jl:
+- Various commen-outs nad distChunker() renamed to be chunker().
+
+Evolution.jl:
+- Other than a one step evolution everything turned off. 
+- All the functions redefined inside and for their arguments to avoid Z and dZdt.
+- The rest of the changes for the evolution are the changes to make to concept work. 
+
+IC.jl:
+- Similar changes mentioned in the Evolution.jl.
+
+main.jl:
+- Similar changes to all above. Nothing extra.
+
+
+
 #### v0.3.10 - DistributedArrays Update
 DistributedArrays are implemented fully using "@sync @distributed" concept of parallelization.
 
