@@ -136,9 +136,9 @@ function update_Paddings!(ϕ,ψ,Z)
     # @time begin
     #     #!v2 for updating paddings using DistArray directly
     #     @sync @distributed for p in workers()
-    #         update_Paddings!(ψ,1,p)
-    #         update_Paddings!(ϕ,1,p)
-    #         update_Paddings!(Z,1,p)
+    #         update_Padds2!(ψ)
+    #         update_Padds2!(ϕ)
+    #         update_Padds2!(Z)
     #     end
     # end
 
@@ -185,48 +185,48 @@ return nothing
 end
 
 #!#############################--------------------------Version - 2 -- looks way slower
-    # export update_Paddings!
-    # function update_Paddings!(ψ::DArray{<:Number, 3},t::Int,p::Int)
+    # export update_Padds2!
+    # function update_Padds2!(ψ::DArray{<:Number, 2})
 
-    #     lx_p, rx_p, ly_p, ry_p = distChunkerPadd(p)
+    #     lx_p, rx_p, ly_p, ry_p = distChunkerPadd(myid())
     #     #Find neighbors
-    #     n_left, n_right, n_bottom, n_top = find_neighbours(p)
+    #     n_left, n_right, n_bottom, n_top = find_neighbours(myid())
     #     # lx_left, rx_left, ly_left, ry_left = distChunkerPadd(n_left)
 
     #     #!how to do pbc??
-    #     nnl = lx_p-padding_size
+    #     nnl = lx_p-padd-1
     #     nnr = rx_p+padd+1
-    #     nnb = ly_p-padding_size
+    #     nnb = ly_p-padd-1
     #     nnt = ry_p+padd+1
 
-    #     nnl < 1 && (nnl = (Nx_padd+1)-padding_size)
+    #     nnl < 1       && (nnl = (Nx_padd)-padd)
     #     nnr > Nx_padd && (nnr = 1+padd)
-    #     nnb < 1       && (nnb = (Ny_padd+1)-padding_size)
+    #     nnb < 1       && (nnb = (Ny_padd)-padd)
     #     nnt > Ny_padd && (nnt = 1+padd)
 
 
     #     #Left        
-    #     # ψ[lx_p:lx_p+padd-1, ly_p+padd:ry_p-padd, t] .= ψ[nnl:nnl+padd-1, ly_p+padd:ry_p-padd, t]
-    #     localpart(ψ)[1:padd, padd+1:Ny_loc+padd, t] .= ψ[nnl:nnl+padd-1, ly_p+padd:ry_p-padd, t]
+    #     # ψ[lx_p:lx_p+padd-1, ly_p+padd:ry_p-padd] .= ψ[nnl:nnl+padd-1, ly_p+padd:ry_p-padd]
+    #     localpart(ψ)[1:padd, padd+1:Ny_loc+padd] .= ψ[nnl:nnl+padd-1, ly_p+padd:ry_p-padd]
     #     #Right
     #     # ψ[rx_p-padd+1:rx_p, ly_p+padd:ry_p-padd, t] .= ψ[nnr:nnr+padd-1, ly_p+padd:ry_p-padd, t]
-    #     localpart(ψ)[Nx_loc+padd+1:end, padd+1:Ny_loc+padd, t] .= ψ[nnr:nnr+padd-1, ly_p+padd:ry_p-padd, t]
+    #     localpart(ψ)[Nx_loc+padd+1:end, padd+1:Ny_loc+padd] .= ψ[nnr:nnr+padd-1, ly_p+padd:ry_p-padd]
     #     #Bottom
     #     # ψ[lx_p+padd:rx_p-padd, ly_p:ly_p+padd-1, t] .= ψ[lx_p+padd:rx_p-padd, nnb:nnb+padd-1, t]
-    #     localpart(ψ)[padd+1:Nx_loc+padd, 1:padd, t] .= ψ[lx_p+padd:rx_p-padd, nnb:nnb+padd-1, t]
+    #     localpart(ψ)[padd+1:Nx_loc+padd, 1:padd] .= ψ[lx_p+padd:rx_p-padd, nnb:nnb+padd-1]
     #     #Top
     #     # ψ[lx_p+padd:rx_p-padd, ry_p-padd+1:rx_p, t] .= ψ[lx_p+padd:rx_p-padd, nnt:nnt+padd-1, t]
-    #     localpart(ψ)[padd+1:Nx_loc+padd, Ny_loc+padd+1:end, t] .= ψ[lx_p+padd:rx_p-padd, nnt:nnt+padd-1, t]
+    #     localpart(ψ)[padd+1:Nx_loc+padd, Ny_loc+padd+1:end] .= ψ[lx_p+padd:rx_p-padd, nnt:nnt+padd-1]
 
     # return nothing
     # end
 
-    # export update_Paddings!
-    # function update_Paddings!(Z::DArray{ComplexF64, 5},t::Int,p::Int)
+    # export update_Padds2!
+    # function update_Paddings2!(Z::DArray{ComplexF64, 4})
 
-    #     lx_p, rx_p, ly_p, ry_p = distChunkerPadd(p)
+    #     lx_p, rx_p, ly_p, ry_p = distChunkerPadd(myid())
     #     #Find neighbors
-    #     n_left, n_right, n_bottom, n_top = find_neighbours(p)
+    #     n_left, n_right, n_bottom, n_top = find_neighbours(myid())
     #     # lx_left, rx_left, ly_left, ry_left = distChunkerPadd(n_left)
 
     #     #!how to do pbc??
@@ -242,13 +242,13 @@ end
 
 
     #     #Left        
-    #     localpart(Z)[1:padd, :, padd+1:Ny_loc+padd, :, t] .= Z[nnl:nnl+padd-1, :, ly_p+padd:ry_p-padd, :, t]
+    #     localpart(Z)[1:padd, :, padd+1:Ny_loc+padd, :] .= Z[nnl:nnl+padd-1, :, ly_p+padd:ry_p-padd, :]
     #     #Right
-    #     localpart(Z)[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :, t] .= Z[nnr:nnr+padd-1, :, ly_p+padd:ry_p-padd, :, t]
+    #     localpart(Z)[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :] .= Z[nnr:nnr+padd-1, :, ly_p+padd:ry_p-padd, :]
     #     #Bottom
-    #     localpart(Z)[padd+1:Nx_loc+padd, :, 1:padd, :, t] .= Z[lx_p+padd:rx_p-padd, :, nnb:nnb+padd-1, :, t]        
+    #     localpart(Z)[padd+1:Nx_loc+padd, :, 1:padd, :] .= Z[lx_p+padd:rx_p-padd, :, nnb:nnb+padd-1, :]
     #     #Top
-    #     localpart(Z)[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :, t] .= Z[lx_p+padd:rx_p-padd, :, nnt:nnt+padd-1, :, t]  
+    #     localpart(Z)[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :] .= Z[lx_p+padd:rx_p-padd, :, nnt:nnt+padd-1, :]
 
     # return nothing
     # end
