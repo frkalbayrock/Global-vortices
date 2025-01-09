@@ -52,17 +52,27 @@ end
 
 #--Initilize the Global Lattice Arrays 
     #Standards:  ϕ and ψ are in 2D lattice // Z can be on the flattened 1D N^2 lattice or native 2D lattice
-    const ϕ = im.*dzeros(Nx_padd,Ny_padd)
-    const ψ =     dzeros(Nx_padd,Ny_padd)
-    const dϕdt = im.*dzeros(Nx,Ny,2)
-    const dψdt =     dzeros(Nx,Ny,2)
+    const ϕ = DArray((Nx_padd,Ny_padd),workers(),[nprocs_perdim[1],nprocs_perdim[2]]) do I
+        im*zeros(map(length,I)...)
+    end
+    const ψ = DArray((Nx_padd,Ny_padd),workers(),[nprocs_perdim[1],nprocs_perdim[2]]) do I
+        zeros(map(length,I)...)
+    end
+    const dϕdt = DArray((Nx,Ny),workers(),[nprocs_perdim[1],nprocs_perdim[2]]) do I
+        im*zeros(map(length,I)...)
+    end
+    const dψdt = DArray((Nx,Ny),workers(),[nprocs_perdim[1],nprocs_perdim[2]]) do I
+           zeros(map(length,I)...)
+    end
     const Z = DArray((Nx_padd,Nx,Ny_padd,Ny),workers(),[nprocs_perdim[1],1,nprocs_perdim[2],1]) do I
         im*zeros(length(I[1]),length(I[2]),length(I[3]),length(I[4]))
     end
     const dZdt = DArray((Nx,Nx,Ny,Ny,2),workers(),[nprocs_perdim[1],1,nprocs_perdim[2],1,1]) do I
         im*zeros(length(I[1]),length(I[2]),length(I[3]),length(I[4]),length(I[5]))
     end
-    const ZED = dzeros(Nx,Ny)
+    const ZED = DArray((Nx,Ny),workers(),[nprocs_perdim[1],nprocs_perdim[2]]) do I
+        zeros(map(length,I)...)
+    end
     #Global fields only for recording purposes --#!might change later if we can find an efficient way of doing it. 
     const ϕ_gl = im*zeros(Nx,Ny)
     const ψ_gl =    zeros(Nx,Ny)
