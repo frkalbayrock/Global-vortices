@@ -1,5 +1,35 @@
 # CHANGELOG
 
+#### v5.0.1 - DistributedArrays.SPMD
+SPMD mode of DistributedArrays is deployed in the hope that it is faster.
+
+All the changes listed: 
+
+Auxiliary.jl:
+- update_Paddings!() gets an update to be called from spmd(...). In DArray we used to use the @sync @distributed construct for scheduling jobs on workers. In SPMD it is not necessary since this is done automatically by spmd(...). Now this function only calls the field update_Padds!() functions. 
+- update_Padds!() nicely organized with the symbol [:L] for localpart. When we call f[:L] it refers to the local part of that field.
+- There are few versions of this update_Padds() operation. We leave them in the code for now, but the v1 seems to be the fastest. We'll test them for bigger lattices later.*****
+
+Energy.jl:
+- @sync @distributed construct is removed and update_Paddings!() is called directly using spmd(...)
+- totalE now calculated with spmd() directly rather than @sync @distributed (+) construct. 
+- We also keep the original version just to test later on a big lattice.*****
+- energy_calculation() is updated with [:L] symbols.
+
+Evolution.jl:
+- The evolution function are now being called with spmd().
+- The speed of these operations with spmd seems to be reduced --so eventually we might need to use some sort of a combination hybrid model to make DArray faster.*****
+- The evolution functions were updated for spmd() rather than using @sync @distributed construct.
+
+IC.jl:
+- Similar changes as above; all the @sync @distributed constructs replaced with spmd() calls.
+- And [:L] symbols used instead of localpart()
+
+main.jl:
+- All the DArrays are defined in detail with DArray(...) for correct partition into chunks in case the division is done with different nprocs_perdim in each dimension.
+
+Overall these changes so far hasn't improved performance but we'll test it with bigger lattice and higher procs count to fully utilize spmd() and compare to the other versions. 
+
 #### v0.3.10 - DistributedArrays Update
 DistributedArrays are implemented fully using "@sync @distributed" concept of parallelization.
 

@@ -8,10 +8,12 @@ using .IndexMap
 include("Auxiliary.jl")
 using .Auxiliary_Routines
 using Distributed
+using DistributedArrays
 @everywhere using DistributedArrays
-@everywhere using Profile
-@everywhere using PProf
-@everywhere using DelimitedFiles
+@everywhere using DistributedArrays.SPMD
+# @everywhere using Profile
+# @everywhere using PProf
+# @everywhere using DelimitedFiles
 
 #------------------------------------------------------------------------------------------------#
 #initialConditions sets the initial conditions for the fields ϕ,ψ,Z and calculates the renormalization factor
@@ -20,18 +22,16 @@ export initialConditions!
 function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
 
 
-    #---Set i.c. for ϕ and ψ locally
-    @sync @distributed for _ in workers()
-        ic_ϕ_ψ!(localpart(ϕ),localpart(ψ),localpart(dϕdt),localpart(dψdt))
-    end
+    #---Set i.c. for ϕ and ψ locally (SPMD)
+    spmd(ic_ϕ_ψ!, ϕ,ψ,dϕdt,dψdt; pids=workers())
 
 
 
     #---Collect ϕ and ψ to global fields for Ω calculation
     for p in workers()
         lx_p, rx_p, ly_p, ry_p = distChunker(p)
-        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ψ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
-        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p localpart(ϕ)[1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
+        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p ψ[:L][1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
+        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom p ϕ[:L][1+padd:Nx_loc+padd,1+padd:Ny_loc+padd,1]
     end
 
 
@@ -52,19 +52,19 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ϕ_gl,ψ_gl)
 
 
 
-    #---Chunk Z and send it to workers
-    @sync @distributed for p in workers()
-        lx_p, rx_p, ly_p, ry_p = distChunker(p)
-        localpart(Z)[padd+1:Nx_loc+padd,:,
-                     padd+1:Ny_loc+padd,:,1] .= -im/sqrt(2) .* inv_S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
-        localpart(dZdt)[:,:,:,:,1]           .= 1/sqrt(2)   .* S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
-    end
-
+    #---Set i.c. for Z locally using Ω Matrices calculated above (SPMD)
+    spmd(ic_Z!, Z, dZdt, inv_S_Ωzero_f, S_Ωzero_f; pids=workers())
 
 end
 
 
-# @everywhere workers() 
+
+
+
+
+
+
+
 function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
 
     #Find the chunk's physical coordinates and physical ends
@@ -92,22 +92,29 @@ function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
             y1 = y-r0
             y2 = y+r0
             δϕ = f_amp*sin(κ*x)sin(κ*y)
-            ϕ[j,k,1] = η #+ im*δϕ
-            dϕdt[j-padd,k-padd,1] = 0
-            ψ[j,k,1] = amp*(exp( -width/(vx^2 + vy^2)
+            ϕ[:L][j,k] = η + im*δϕ
+            dϕdt[:L][j-padd,k-padd,1] = 0
+            ψ[:L][j,k] = amp*(exp( -width/(vx^2 + vy^2)
                                * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )       
                           + exp( -width/(vx^2 + vy^2) 
                                * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
-            dψdt[j-padd,k-padd,1] = ( 2amp *width *γ^2 *(x1 *(-vx) + y1 *(-vy)) 
+            dψdt[:L][j-padd,k-padd,1] = ( 2amp *width *γ^2 *(x1 *(-vx) + y1 *(-vy)) 
                             *exp(-width/(vx^2 + vy^2) * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1 *(-vy))^2 * γ^2 ))
                                     + 2amp *width *γ^2 *(x2 *(vx) + y2 *(vy)) 
                             *exp(-width/(vx^2 + vy^2) * ( (x2 *(vy) - y2 *(vx))^2 + (x2* (vx) + y2 *(vy))^2 * γ^2 ))    )
         end
     end
+
 end
 
 
 
+function ic_Z!(Z,dZdt,inv_S_Ωzero_f,S_Ωzero_f)
+    lx_p, rx_p, ly_p, ry_p = distChunker(myid())
+    Z[:L][padd+1:Nx_loc+padd,:,
+                     padd+1:Ny_loc+padd,:] .= -im/sqrt(2) .* inv_S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
+    dZdt[:L][:,:,:,:,1]                    .=   1/sqrt(2)     .* S_Ωzero_f[lx_p:rx_p,:,ly_p:ry_p,:]
+end
 
 
 #omegaIC calculates the Ω^2 matrix used in CQC calculations.
@@ -231,8 +238,8 @@ export renormalization
     #we only use the value of Z from the boundary.
     #More specifically, bottom right corner of lattice is used (could be any point on boundary)
 function renormalization(Z)
-    meanSqrRenorm = sum(abs2,Z[end-padd,:,end-padd,:,1])
-    println("meanSqrRenorm = ",meanSqrRenorm)#!
+    meanSqrRenorm = sum(abs2,Z[end-padd,:,end-padd,:])
+    println("meanSqrRenorm = ",meanSqrRenorm)
 return meanSqrRenorm
 end
 
@@ -246,7 +253,7 @@ function zeroPointEnergy(Z,dZdt)
     Z_partial = Array{ComplexF64,4}(undef,2,Nx,2,Ny)
     dZdt_partial = Array{ComplexF64,2}(undef,Nx,Ny)
     #Fetch from the corner chunk
-    Z_partial .= @views Z[end-padd-1:end-padd,:,end-padd-1:end-padd,:,1]
+    Z_partial .= @views Z[end-padd-1:end-padd,:,end-padd-1:end-padd,:]
     dZdt_partial .= @views dZdt[end,:,end,:,1]
 
         #Calculate zPE

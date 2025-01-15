@@ -7,6 +7,7 @@ include("IndexMap.jl")
 using .IndexMap
 using OffsetArrays
 using DistributedArrays
+using DistributedArrays.SPMD
 
 
 #This routine applies the periodic boundary conditions on 2-D lattice
@@ -80,7 +81,7 @@ end
 
 
 
-#Returns the ends of each chunk given the proc_id (no padding)
+#Returns the ends of each chunk given the proc_id --(no padding)--
 export distChunker
 function distChunker(proc_id::Int)
     
@@ -98,7 +99,7 @@ end
 
 
 
-#Returns the ends of each chunk for fields with "padding" given the proc_id
+#Returns the ends of each chunk for fields --with "padding"-- given the proc_id
 export distChunkerPadd
 function distChunkerPadd(proc_id::Int)
     
@@ -125,108 +126,158 @@ end
 #---Transfer Functions
 #Data exchange initiator to fill paddings with updated data from neighboring blocks
 export update_Paddings!
-function update_Paddings!(ϕ,ψ,Z,t)
-
-    @sync @distributed for _ in workers()
-        update_Padds!(ϕ,t)
-        update_Padds!(ψ,t)
-        update_Padds!(Z,t)
-    end
+function update_Paddings!(ϕ,ψ,Z)
+    
+    update_Padds!(ϕ)
+    update_Padds!(ψ)
+    update_Padds!(Z)
 
     # @time begin
-    #     #!v2 for updating paddings using DistArray directly
+    #     #!v3 for updating paddings using DistArray directly
     #     @sync @distributed for p in workers()
-    #         update_Paddings!(ψ,1,p)
-    #         update_Paddings!(ϕ,1,p)
-    #         update_Paddings!(Z,1,p)
+    #         update_Padds2!(ψ)
+    #         update_Padds2!(ϕ)
+    #         update_Padds2!(Z)
     #     end
     # end
 
 end
 
-
-
-function update_Padds!(f::DArray{<:Number, 3},t::Int)
+#!---------TURN ONLY ONE OF THEM FOR TESTING FOR THE BIGGER LATTICE!-----------!#
+#!version1 (so far this seems to be faster and more memory efficient)
+function update_Padds!(f::DArray{<:Number, 2})
 
     #Find neighbors
     n_left, n_right, n_bottom, n_top = find_neighbours(myid())
 
     #!we'll add @views at some point.
     #Left padding
-    localpart(f)[1:padd, padd+1:Ny_loc+padd, t]            .= @fetchfrom n_left   localpart(f)[Nx_loc+padd:end-padd, padd+1:Ny_loc+padd, t]
+    f[:L][1:padd, padd+1:Ny_loc+padd]            .= @fetchfrom n_left   f[:L][Nx_loc+padd:end-padd, padd+1:Ny_loc+padd]
     #Right padding
-    localpart(f)[Nx_loc+padd+1:end, padd+1:Ny_loc+padd, t] .= @fetchfrom n_right  localpart(f)[padd+1:padding_size, padd+1:Ny_loc+padd, t]
+    f[:L][Nx_loc+padd+1:end, padd+1:Ny_loc+padd] .= @fetchfrom n_right  f[:L][padd+1:padding_size, padd+1:Ny_loc+padd]
     #Bottom padding
-    localpart(f)[padd+1:Nx_loc+padd, 1:padd, t]            .= @fetchfrom n_bottom localpart(f)[padd+1:Nx_loc+padd, Ny_loc+padd:end-padd, t]
+    f[:L][padd+1:Nx_loc+padd, 1:padd]            .= @fetchfrom n_bottom f[:L][padd+1:Nx_loc+padd, Ny_loc+padd:end-padd]
     #Top padding
-    localpart(f)[padd+1:Nx_loc+padd, Ny_loc+padd+1:end, t] .= @fetchfrom n_top    localpart(f)[padd+1:Nx_loc+padd, padd+1:padding_size, t]
+    f[:L][padd+1:Nx_loc+padd, Ny_loc+padd+1:end] .= @fetchfrom n_top    f[:L][padd+1:Nx_loc+padd, padd+1:padding_size]
 
 return nothing
 end
 
 
 #Updating 
-function update_Padds!(Z::DArray{ComplexF64, 5},t::Int)
+function update_Padds!(Z::DArray{ComplexF64, 4})
 
     #Find neighbors
     n_left, n_right, n_bottom, n_top = find_neighbours(myid())
 
     #!we'll add @views at some point.
     #Left padding
-    localpart(Z)[1:padd, :, padd+1:Ny_loc+padd, :, t]            .= @fetchfrom n_left   localpart(Z)[Nx_loc+padd:end-padd, :, padd+1:Ny_loc+padd, :, t]
+    Z[:L][1:padd, :, padd+1:Ny_loc+padd, :]            .= @fetchfrom n_left   Z[:L][Nx_loc+padd:end-padd, :, padd+1:Ny_loc+padd, :]
     #Right padding
-    localpart(Z)[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :, t] .= @fetchfrom n_right  localpart(Z)[padd+1:padding_size, :, padd+1:Ny_loc+padd, :, t]
+    Z[:L][Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :] .= @fetchfrom n_right  Z[:L][padd+1:padding_size, :, padd+1:Ny_loc+padd, :]
     #Bottom padding
-    localpart(Z)[padd+1:Nx_loc+padd, :, 1:padd, :, t]            .= @fetchfrom n_bottom localpart(Z)[padd+1:Nx_loc+padd, :, Ny_loc+padd:end-padd, :, t]
+    Z[:L][padd+1:Nx_loc+padd, :, 1:padd, :]            .= @fetchfrom n_bottom Z[:L][padd+1:Nx_loc+padd, :, Ny_loc+padd:end-padd, :]
     #Top padding
-    localpart(Z)[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :, t] .= @fetchfrom n_top    localpart(Z)[padd+1:Nx_loc+padd, :, padd+1:padding_size, :, t]
+    Z[:L][padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :] .= @fetchfrom n_top    Z[:L][padd+1:Nx_loc+padd, :, padd+1:padding_size, :]
 
 return nothing
 end
 
-#!#############################--------------------------Version - 2 -- looks way slower
-    # export update_Paddings!
-    # function update_Paddings!(ψ::DArray{<:Number, 3},t::Int,p::Int)
 
-    #     lx_p, rx_p, ly_p, ry_p = distChunkerPadd(p)
+
+#!version2
+# function update_Padds!(f::DArray{<:Number, 2})
+
+#     #Find neighbors
+#     n_left, n_right, n_bottom, n_top = find_neighbours(myid())
+
+#     #--Send
+#     sendto(n_right,  f[:L][Nx_loc+padd:end-padd, padd+1:Ny_loc+padd]; tag="lr") #Left to right
+#     sendto(n_left,   f[:L][padd+1:padding_size, padd+1:Ny_loc+padd];  tag="rl") #Right to left
+#     sendto(n_top,    f[:L][padd+1:Nx_loc+padd, Ny_loc+padd:end-padd]; tag="bt") #Bottom to top
+#     sendto(n_bottom, f[:L][padd+1:Nx_loc+padd, padd+1:padding_size];  tag="tb") #Top to bottom
+    
+#     #--Receive
+#     f[:L][1:padd, padd+1:Ny_loc+padd]            .= recvfrom(n_left;   tag="lr")
+#     f[:L][Nx_loc+padd+1:end, padd+1:Ny_loc+padd] .= recvfrom(n_right;  tag="rl")
+#     f[:L][padd+1:Nx_loc+padd, 1:padd]            .= recvfrom(n_bottom; tag="bt")
+#     f[:L][padd+1:Nx_loc+padd, Ny_loc+padd+1:end] .= recvfrom(n_top;    tag="tb")
+
+
+#     barrier(;pids=workers())
+# end
+
+# function update_Padds!(Z::DArray{ComplexF64, 4})
+
+#     #Find neighbors
+#     n_left, n_right, n_bottom, n_top = find_neighbours(myid())
+
+#     #--Send
+#     sendto(n_right,  Z[:L][Nx_loc+padd:end-padd, :, padd+1:Ny_loc+padd, :]; tag="lr") #Left to right
+#     sendto(n_left,   Z[:L][padd+1:padding_size, :, padd+1:Ny_loc+padd, :];  tag="rl") #Right to left
+#     sendto(n_top,    Z[:L][padd+1:Nx_loc+padd, :, Ny_loc+padd:end-padd,: ]; tag="bt") #Bottom to top
+#     sendto(n_bottom, Z[:L][padd+1:Nx_loc+padd, :, padd+1:padding_size, :];  tag="tb") #Top to bottom
+    
+#     #--Receive
+#     Z[:L][1:padd, :, padd+1:Ny_loc+padd, :]            .= recvfrom(n_left;   tag="lr")
+#     Z[:L][Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :] .= recvfrom(n_right;  tag="rl")
+#     Z[:L][padd+1:Nx_loc+padd, :, 1:padd, :]            .= recvfrom(n_bottom; tag="bt")
+#     Z[:L][padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :] .= recvfrom(n_top;    tag="tb")
+
+#     barrier(;pids=workers())
+# end
+#!---------TURN ONLY ONE OF THEM FOR TESTING FOR THE BIGGER LATTICE!-----------!#
+
+
+
+
+
+
+
+
+#!#############################--------------------------Version - 3 -- looks way slower
+    # export update_Padds2!
+    # function update_Padds2!(ψ::DArray{<:Number, 2})
+
+    #     lx_p, rx_p, ly_p, ry_p = distChunkerPadd(myid())
     #     #Find neighbors
-    #     n_left, n_right, n_bottom, n_top = find_neighbours(p)
+    #     n_left, n_right, n_bottom, n_top = find_neighbours(myid())
     #     # lx_left, rx_left, ly_left, ry_left = distChunkerPadd(n_left)
 
     #     #!how to do pbc??
-    #     nnl = lx_p-padding_size
+    #     nnl = lx_p-padd-1
     #     nnr = rx_p+padd+1
-    #     nnb = ly_p-padding_size
+    #     nnb = ly_p-padd-1
     #     nnt = ry_p+padd+1
 
-    #     nnl < 1 && (nnl = (Nx_padd+1)-padding_size)
+    #     nnl < 1       && (nnl = (Nx_padd)-padd)
     #     nnr > Nx_padd && (nnr = 1+padd)
-    #     nnb < 1       && (nnb = (Ny_padd+1)-padding_size)
+    #     nnb < 1       && (nnb = (Ny_padd)-padd)
     #     nnt > Ny_padd && (nnt = 1+padd)
 
 
     #     #Left        
-    #     # ψ[lx_p:lx_p+padd-1, ly_p+padd:ry_p-padd, t] .= ψ[nnl:nnl+padd-1, ly_p+padd:ry_p-padd, t]
-    #     localpart(ψ)[1:padd, padd+1:Ny_loc+padd, t] .= ψ[nnl:nnl+padd-1, ly_p+padd:ry_p-padd, t]
+    #     # ψ[lx_p:lx_p+padd-1, ly_p+padd:ry_p-padd] .= ψ[nnl:nnl+padd-1, ly_p+padd:ry_p-padd]
+    #     localpart(ψ)[1:padd, padd+1:Ny_loc+padd] .= ψ[nnl:nnl+padd-1, ly_p+padd:ry_p-padd]
     #     #Right
     #     # ψ[rx_p-padd+1:rx_p, ly_p+padd:ry_p-padd, t] .= ψ[nnr:nnr+padd-1, ly_p+padd:ry_p-padd, t]
-    #     localpart(ψ)[Nx_loc+padd+1:end, padd+1:Ny_loc+padd, t] .= ψ[nnr:nnr+padd-1, ly_p+padd:ry_p-padd, t]
+    #     localpart(ψ)[Nx_loc+padd+1:end, padd+1:Ny_loc+padd] .= ψ[nnr:nnr+padd-1, ly_p+padd:ry_p-padd]
     #     #Bottom
     #     # ψ[lx_p+padd:rx_p-padd, ly_p:ly_p+padd-1, t] .= ψ[lx_p+padd:rx_p-padd, nnb:nnb+padd-1, t]
-    #     localpart(ψ)[padd+1:Nx_loc+padd, 1:padd, t] .= ψ[lx_p+padd:rx_p-padd, nnb:nnb+padd-1, t]
+    #     localpart(ψ)[padd+1:Nx_loc+padd, 1:padd] .= ψ[lx_p+padd:rx_p-padd, nnb:nnb+padd-1]
     #     #Top
     #     # ψ[lx_p+padd:rx_p-padd, ry_p-padd+1:rx_p, t] .= ψ[lx_p+padd:rx_p-padd, nnt:nnt+padd-1, t]
-    #     localpart(ψ)[padd+1:Nx_loc+padd, Ny_loc+padd+1:end, t] .= ψ[lx_p+padd:rx_p-padd, nnt:nnt+padd-1, t]
+    #     localpart(ψ)[padd+1:Nx_loc+padd, Ny_loc+padd+1:end] .= ψ[lx_p+padd:rx_p-padd, nnt:nnt+padd-1]
 
     # return nothing
     # end
 
-    # export update_Paddings!
-    # function update_Paddings!(Z::DArray{ComplexF64, 5},t::Int,p::Int)
+    # export update_Padds2!
+    # function update_Padds2!(Z::DArray{ComplexF64, 4})
 
-    #     lx_p, rx_p, ly_p, ry_p = distChunkerPadd(p)
+    #     lx_p, rx_p, ly_p, ry_p = distChunkerPadd(myid())
     #     #Find neighbors
-    #     n_left, n_right, n_bottom, n_top = find_neighbours(p)
+    #     n_left, n_right, n_bottom, n_top = find_neighbours(myid())
     #     # lx_left, rx_left, ly_left, ry_left = distChunkerPadd(n_left)
 
     #     #!how to do pbc??
@@ -242,13 +293,13 @@ end
 
 
     #     #Left        
-    #     localpart(Z)[1:padd, :, padd+1:Ny_loc+padd, :, t] .= Z[nnl:nnl+padd-1, :, ly_p+padd:ry_p-padd, :, t]
+    #     localpart(Z)[1:padd, :, padd+1:Ny_loc+padd, :] .= Z[nnl:nnl+padd-1, :, ly_p+padd:ry_p-padd, :]
     #     #Right
-    #     localpart(Z)[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :, t] .= Z[nnr:nnr+padd-1, :, ly_p+padd:ry_p-padd, :, t]
+    #     localpart(Z)[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :] .= Z[nnr:nnr+padd-1, :, ly_p+padd:ry_p-padd, :]
     #     #Bottom
-    #     localpart(Z)[padd+1:Nx_loc+padd, :, 1:padd, :, t] .= Z[lx_p+padd:rx_p-padd, :, nnb:nnb+padd-1, :, t]        
+    #     localpart(Z)[padd+1:Nx_loc+padd, :, 1:padd, :] .= Z[lx_p+padd:rx_p-padd, :, nnb:nnb+padd-1, :]
     #     #Top
-    #     localpart(Z)[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :, t] .= Z[lx_p+padd:rx_p-padd, :, nnt:nnt+padd-1, :, t]  
+    #     localpart(Z)[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :] .= Z[lx_p+padd:rx_p-padd, :, nnt:nnt+padd-1, :]
 
     # return nothing
     # end

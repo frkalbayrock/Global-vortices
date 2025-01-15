@@ -18,7 +18,9 @@ using OffsetArrays
 using Profile
 using PProf
 using JLD2
-@everywhere using DistributedArrays
+using DistributedArrays
+using DistributedArrays.SPMD
+
 
 
 
@@ -51,20 +53,14 @@ function time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE,ϕ_gl,ψ_gl
 
     #Time evolution
     for t=1:nt
-        
 
         #Move a time step
-        half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
-        # @sync @distributed for _ in workers()
-        #     half_step!(localpart(ϕ),localpart(ψ),localpart(Z),localpart(dϕdt),localpart(dψdt),localpart(dZdt),1)
-        # end
-        update_Paddings!(ϕ,ψ,Z,2)
-        leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
-        half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,2)
+        spmd(half_step!,ϕ,ψ,Z,dϕdt,dψdt,dZdt,1; pids=workers())
+        spmd(update_Paddings!,ϕ,ψ,Z; pids=workers())
+        spmd(leap_forward!,ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm; pids=workers())
+        spmd(half_step!,ϕ,ψ,Z,dϕdt,dψdt,dZdt,2; pids=workers())
         #Shift next time values to present time for the next step
-        updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
-
-
+        spmd(updateForNextStep,ϕ,ψ,Z,dϕdt,dψdt,dZdt; pids=workers())
 
         # Take a snap
         if mod(t,snapInterval) == 0
@@ -123,49 +119,47 @@ end
 
 
 function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
-    @sync @distributed for _ in workers()
-        @views begin
-        localpart(ϕ)[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,2] .= 
-                        localpart(ϕ)[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,t] + dt_half*( localpart(dϕdt)[:,:,t] ) 
-        localpart(ψ)[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,2] .= 
-                        localpart(ψ)[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,t] + dt_half*( localpart(dψdt)[:,:,t] )
-        localpart(Z)[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:,2] .= 
-                        localpart(Z)[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:,t] + dt_half*( localpart(dZdt)[:,:,:,:,t] )
-        end
-    end
+        ϕ[:L][padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .= 
+                        ϕ[:L][padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] + dt_half*( dϕdt[:L][:,:,t] ) 
+        ψ[:L][padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .= 
+                        ψ[:L][padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] + dt_half*( dψdt[:L][:,:,t] )
+        Z[:L][padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:] .= 
+                        Z[:L][padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:] + dt_half*( dZdt[:L][:,:,:,:,t] )
 end
 
-# #!--------------------#!--------------------#!--------------------
-# function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
-#     @views begin
-#     ϕ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,2] .= ϕ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,t] + dt_half*( dϕdt[:,:,t] ) 
-#     ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,2] .= ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd,t] + dt_half*( dψdt[:,:,t] )
-#     Z[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:,2] .= Z[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:,t] + dt_half*( dZdt[:,:,:,:,t] )
-#     end
-# end
-# #!--------------------#!--------------------#!--------------------
+
 
 function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
-    @sync @distributed for _ in workers()
-        for j=padd+1:Nx_loc+padd
-            for k=padd+1:Ny_loc+padd
-                #Calculate fluxes for ϕ and ψ
-                ϕ_flux , ψ_flux =  @views fluxes_ϕ_ψ(localpart(ϕ)[:,:,2],
-                                                     localpart(ψ)[:,:,2],
-                                                     localpart(Z)[:,:,:,:,2],meanSqrRenorm,j,k)
-                localpart(dϕdt)[j-padd,k-padd,2] = localpart(dϕdt)[j-padd,k-padd,1] + dt*( ϕ_flux )
-                localpart(dψdt)[j-padd,k-padd,2] = localpart(dψdt)[j-padd,k-padd,1] + dt*( ψ_flux )
-                for l=1:Nx
-                    for m=1:Ny
-                        # @views Z_flux = flux_Z(ϕ[j,k,1],ψ[j,k,1],Z[:,l,:,m,1],j,k,nnl_x,nnr_x,nnl_y,nnr_y)
-                        Z_flux = flux_Z(localpart(ϕ),localpart(ψ),localpart(Z),j,l,k,m)
-                        localpart(dZdt)[j-padd,l,k-padd,m,2] = localpart(dZdt)[j-padd,l,k-padd,m,1] + dt*( Z_flux )
-                    end
+    
+    for j=padd+1:Nx_loc+padd
+        for k=padd+1:Ny_loc+padd
+            #Calculate fluxes for ϕ and ψ
+            ϕ_flux , ψ_flux = fluxes_ϕ_ψ(ϕ[:L][:,:],
+                                         ψ[:L][:,:],
+                                         Z[:L][:,:,:,:],meanSqrRenorm,j,k)
+            dϕdt[:L][j-padd,k-padd,2] = dϕdt[:L][j-padd,k-padd,1] + dt*( ϕ_flux )
+            dψdt[:L][j-padd,k-padd,2] = dψdt[:L][j-padd,k-padd,1] + dt*( ψ_flux )
+            for l=1:Nx
+                for m=1:Ny
+                    Z_flux = flux_Z(localpart(ϕ),localpart(ψ),localpart(Z),j,l,k,m)
+                    dZdt[:L][j-padd,l,k-padd,m,2] = dZdt[:L][j-padd,l,k-padd,m,1] + dt*( Z_flux )
                 end
             end
         end
     end
 
+end
+
+
+
+function updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+    #Shift time coordinates
+        # localpart(ϕ)[:,:,1] .= localpart(ϕ)[:,:,2]
+        # localpart(ψ)[:,:,1] .= localpart(ψ)[:,:,2]
+        # localpart(Z)[:,:,:,:,1] .= localpart(Z)[:,:,:,:,2]
+        dϕdt[:L][:,:,1] .= dϕdt[:L][:,:,2]
+        dψdt[:L][:,:,1] .= dψdt[:L][:,:,2]
+        dZdt[:L][:,:,:,:,1] .= dZdt[:L][:,:,:,:,2]
 end
 
 
@@ -185,27 +179,15 @@ end
 
 
 function flux_Z(ϕ,ψ,Z,j,l,k,m)
-    Z_flux = ( (Z[j+1,l,k,m,2] - 2Z[j,l,k,m,2] + Z[j-1,l,k,m,2])/dx^2 
-             + (Z[j,l,k+1,m,2] - 2Z[j,l,k,m,2] + Z[j,l,k-1,m,2])/dy^2
-             - ( m_ρ^2 + α*abs2(ϕ[j,k,2]) + β*ψ[j,k,2]^2 ) * Z[j,l,k,m,2] )
+    Z_flux = ( (Z[j+1,l,k,m] - 2Z[j,l,k,m] + Z[j-1,l,k,m])/dx^2 
+             + (Z[j,l,k+1,m] - 2Z[j,l,k,m] + Z[j,l,k-1,m])/dy^2
+             - ( m_ρ^2 + α*abs2(ϕ[j,k]) + β*ψ[j,k]^2 ) * Z[j,l,k,m] )
 end
 
 
 
 
-function updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
-    #Shift time coordinates
-    @sync @distributed for _ in workers()
-        @views begin
-            localpart(ϕ)[:,:,1] .= localpart(ϕ)[:,:,2]
-            localpart(ψ)[:,:,1] .= localpart(ψ)[:,:,2]
-            localpart(Z)[:,:,:,:,1] .= localpart(Z)[:,:,:,:,2]
-            localpart(dϕdt)[:,:,1] .= localpart(dϕdt)[:,:,2]
-            localpart(dψdt)[:,:,1] .= localpart(dψdt)[:,:,2]
-            localpart(dZdt)[:,:,:,:,1] .= localpart(dZdt)[:,:,:,:,2]
-        end
-    end
-end
+
 
 # 2-index notation (Leap-Frog)
     # export time_evolve!
