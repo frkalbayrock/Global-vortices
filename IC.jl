@@ -34,8 +34,8 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
                 y=k*dy
                 y1 = y-r0
                 y2 = y+r0
-                ϕ[j,k,0] = η
-                dϕdt[j,k,0] = 0
+                ϕ[j,k,0] = η 
+                dϕdt[j,k,0] = 0.
                 ψ[j,k,0] = amp*(exp( -width/(vx^2 + vy^2)
                                     * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )
                             + exp( -width/(vx^2 + vy^2) 

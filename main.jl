@@ -84,6 +84,7 @@ function run_ev()
 
     #----Initial Energy----#
     totalE, ZED = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
+    println("Total initial energy: ", totalE)
 
     #----Time Evolution----#
     @time time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
