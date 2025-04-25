@@ -24,7 +24,7 @@ using DelimitedFiles
 using Plots; pythonplot()
 using Printf
 # !
-# using BenchmarkTools
+using BenchmarkTools
 using Profile
 using PProf
 
@@ -124,6 +124,8 @@ function run_ev()
 
     #----Time Evolution----#
     @time time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
+    # @btime time_evolve!($ϕ_gl,$ψ_gl,$ZED_gl,$meanSqrRenorm,$zPE)
+    # display(@benchmark time_evolve!($ϕ_gl,$ψ_gl,$ZED_gl,$meanSqrRenorm,$zPE) samples=10)
 
 
     #----Check for Vortices----#

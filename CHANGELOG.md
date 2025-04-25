@@ -1,5 +1,20 @@
 # CHANGELOG
 
+#### v1.1.0
+Tested some new methods; @inline and macros. In evolution module, the fluxes are written with macros or @inline'd. 
+
+All the changes listed:
+
+Evolution.jl:
+- Added flux macros in the beginning of the module.
+- half_step!() function is updated with ".+" operation which was just "+" before. This was tested earlier on the serial code and we proved that this helped with the vectorization.
+- Both flux functions are now @inline'd explicitly both on function definition and at the caller. 
+
+main.jl:
+- Added just some benchmarking tools and commands.
+
+Testing (on cluster) shows inconclusive results. However, @inline overall seem to be improving. I'll keep the @inline'd version.
+
 #### v1.0.1
 Found a way to get rid of the time coordinate only from the fields f (not dfdt's). Could improve memory allocations and overall performance.
 
