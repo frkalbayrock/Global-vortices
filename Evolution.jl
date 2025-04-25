@@ -29,6 +29,20 @@ const coords_cart = MPI.Cart_coords(comm_cart, myrank)
 const lx_p, rx_p, ly_p, ry_p = chunker(myrank) #p stands for "physical"
 
 
+
+# #!Macros to test- for speed and allocations
+# macro ϕflux() esc(:(( (ϕ[j+1,k] - 2ϕ[j,k] + ϕ[j-1,k])/dx^2 
+#     + (ϕ[j,k+1] - 2ϕ[j,k] + ϕ[j,k-1])/dy^2 
+#     + ( m_ϕ^2 - α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[j,k]) ) * ϕ[j,k] ))) end
+# macro ψflux() esc(:(( (ψ[j+1,k] - 2ψ[j,k] + ψ[j-1,k])/dx^2 
+#     + (ψ[j,k+1] - 2ψ[j,k] + ψ[j,k-1])/dy^2   
+#     - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k] ))) end
+# macro Zflux() esc(:(( (Z[j+1,l,k,m] - 2Z[j,l,k,m] + Z[j-1,l,k,m])/dx^2 
+#     + (Z[j,l,k+1,m] - 2Z[j,l,k,m] + Z[j,l,k-1,m])/dy^2
+#     - ( m_ρ^2 + α*abs2(ϕ[j,k]) + β*ψ[j,k]^2 ) * Z[j,l,k,m] ))) end
+
+
+
 # 4-index Notation (Leap-frog)
 export time_evolve!
 #We use Leap-Frog: Position Verlet (LFPV) method to time evolve the system.
@@ -137,18 +151,40 @@ function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
 end
 
 
+
+
+# #!Macro
+# function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
+
+#     for j=padd+1:Nx_loc+padd
+#         for k=padd+1:Ny_loc+padd
+#             meanSqr_Rho = @views sum(abs2, Z[j,:,k,:])#!
+#             #Calculate fluxes for ϕ and ψ
+#             dϕdt[j,k,2] = dϕdt[j,k,1] + dt*( @ϕflux() )
+#             dψdt[j,k,2] = dψdt[j,k,1] + dt*( @ψflux() )
+#             for l=1:Nx
+#                 for m=1:Ny
+#                     dZdt[j,l,k,m,2] = dZdt[j,l,k,m,1] + dt*( @Zflux() )
+#                 end
+#             end
+#         end
+#     end
+
+# end
+
+#!Inline
 function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
 
     for j=padd+1:Nx_loc+padd
         for k=padd+1:Ny_loc+padd
             #Calculate fluxes for ϕ and ψ
-            ϕ_flux , ψ_flux =  @views fluxes_ϕ_ψ(ϕ[:,:],ψ[:,:],Z[:,:,:,:],meanSqrRenorm,j,k)
+            @inline @views ϕ_flux , ψ_flux = fluxes_ϕ_ψ(ϕ[:,:],ψ[:,:],Z[:,:,:,:],meanSqrRenorm,j,k)
             dϕdt[j,k,2] = dϕdt[j,k,1] + dt*( ϕ_flux )
             dψdt[j,k,2] = dψdt[j,k,1] + dt*( ψ_flux )
             for l=1:Nx
                 for m=1:Ny
                     # @views Z_flux = flux_Z(ϕ[j,k,1],ψ[j,k,1],Z[:,l,:,m,1],j,k,nnl_x,nnr_x,nnl_y,nnr_y)
-                    Z_flux = flux_Z(ϕ,ψ,Z,j,l,k,m)
+                    @inline Z_flux = flux_Z(ϕ,ψ,Z,j,l,k,m)
                     dZdt[j,l,k,m,2] = dZdt[j,l,k,m,1] + dt*( Z_flux )
                 end
             end
@@ -170,11 +206,14 @@ end
 return ϕ_flux ,ψ_flux
 end
 
-function flux_Z(ϕ,ψ,Z,j,l,k,m)
+@inline function flux_Z(ϕ,ψ,Z,j,l,k,m)
     Z_flux = ( (Z[j+1,l,k,m] - 2Z[j,l,k,m] + Z[j-1,l,k,m])/dx^2 
              + (Z[j,l,k+1,m] - 2Z[j,l,k,m] + Z[j,l,k-1,m])/dy^2
             - ( m_ρ^2 + α*abs2(ϕ[j,k]) + β*ψ[j,k]^2 ) * Z[j,l,k,m] )
 end
+
+
+
 
 function updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
     @views begin

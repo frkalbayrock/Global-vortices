@@ -1,5 +1,19 @@
 # CHANGELOG
 
+#### v2.1.0
+Tested some new methods; @inline and macros. In evolution module, the fluxes are written with macros or @inline'd.
+
+All the changes listed:
+
+Evolution.jl:
+- Added flux macros in the beginning of the module.
+- Both flux functions are now @inline'd explicitly both on function definition and at the caller.
+
+main.jl:
+- Added just some benchmarking tools and commands.
+
+Testing (on cluster) shows inconclusive results. However, @inline overall seem to be improving. I'll keep the @inline'd version.
+
 #### v2.0.2
 MPI version gets the FindVortex module. The vortex_finder() is now called every time step. 
 

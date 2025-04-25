@@ -113,6 +113,8 @@ function run_ev()
 
     #----Time Evolution----#
     @time time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
+     # @btime time_evolve!($ϕ_gl,$ψ_gl,$ZED_gl,$meanSqrRenorm,$zPE)
+    # display(@benchmark time_evolve!($ϕ_gl,$ψ_gl,$ZED_gl,$meanSqrRenorm,$zPE) samples=10)
 
 
 
