@@ -48,6 +48,11 @@ using PProf
 end
 
 
+#Open the directories
+run(`mkdir -p data`)
+run(`mkdir -p data/energies`)
+
+
 #--Initilize the Global Lattice Arrays 
     #Standards:  ϕ and ψ are in 2D lattice // Z can be on the flattened 1D N^2 lattice or native 2D lattice
     const ϕ_gl = OffsetArray(im*zeros(Nx, Ny),lx:rx,ly:ry)

@@ -61,8 +61,8 @@ function initialConditions!(ϕ_gl,ψ_gl)
         ry_p = Int(Ny/2+ry_p)
 
         Z[padd+1:Nx_loc+padd,:,
-            padd+1:Ny_loc+padd,:] .= -im/sqrt(2) .* ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-        dZdt[:,:,:,:,1]             .= 1/sqrt(2)   .* ($S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
+          padd+1:Ny_loc+padd,:] .= -im/sqrt(2) .* ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
+        dZdt[:,:,:,:,1]         .=   1/sqrt(2) .* ($S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
     end
 
 

@@ -1,6 +1,29 @@
 # CHANGELOG
 
-#### v1.1.0
+### v1.1.1 - Small Fixes and Beautification
+We have found few possible bugs in getData_f() functions. ALso some realignment, organization is done to make the code more readable.
+
+All the changes liste: 
+
+##### Auxiliary.jl:
+- In update_Paddings() and getData_f() the array indices are aligned for easy reading.
+- There were some extra commas for n=1 and n=2 lines of the getData_ψ() in the arguments of "ψ". These are removed.
+- For all getData_f() for n=1 and n=3 lines the data requested didn't scale with derivative order. The issue was for n=1 for example, Nx_loc+padd:end-padd is used for the x-coordinate range which was not correct in general. For our case it worked as this code uses only the nearest neighbors derivative calculation but for higher order derivatives this wouldn't work. Nx_loc+padd:end-padd was targeting only a single column to be copied/sent since Nx_loc+padd = end-padd. If we needed more columns like for higher order derivatives this wouldn't cover those. These statements are changed with the correct expression Nx_loc+1:end-padd which runs on the correct range no matter the order of the derivative. Similar is done for the y-coordinate as well at lines n=3 for each  getData_f() function.
+
+##### Energy.jl:
+- We finally added the + λη^4/4 term to the potential energy. This was always done at the run level never applied to the commits; now we finally fixed this.
+
+##### IC.jl:
+- Just some realignment for easy reading.
+
+##### main.jl:
+- We finally added the command line arguments to create the directories where the data is going to be written. Surprisingly, this was always done manually when needed until now because of being extremely lazy.
+
+
+
+
+
+### v1.1.0
 Tested some new methods; @inline and macros. In evolution module, the fluxes are written with macros or @inline'd. 
 
 All the changes listed:
@@ -15,7 +38,7 @@ main.jl:
 
 Testing (on cluster) shows inconclusive results. However, @inline overall seem to be improving. I'll keep the @inline'd version.
 
-#### v1.0.1
+### v1.0.1
 Found a way to get rid of the time coordinate only from the fields f (not dfdt's). Could improve memory allocations and overall performance.
 
 All the changes listed:
@@ -43,10 +66,10 @@ main.jl:
 - Writing the informaiton on a file part is updated as other DArray version of the code with println()'s instead of writedlm().
 - 
 
-#### v1.0.0
+### v1.0.0
 Upgrading the version number only. No changes have been made here.
 
-#### v0.3.10
+### v0.3.10
 Small changes for parallel-Julia version of the code. Mainly FindVortex module is updated for vortex positions recording. 
 
 All the changes listed  :
@@ -65,7 +88,7 @@ main.jl:
 - Initial Z energy density (ZED) is nto recorded into a separate file called "initial_ZED.dat".
 
 
-#### v0.3.6
+### v0.3.6
 All the changes listed:  
 
 Auxiliary.jl:
@@ -97,7 +120,7 @@ Next stage:
 It seems we still have performance issues; possibly due to the way the parallelization is done. Cluster runs show that there is an enormous read and write operations happening. The testing shows that it is due to the parallelization macros. Needs further looking into. 
 DistributedArrays might be the only option way forward.
 
-#### v0.3.5
+### v0.3.5
 Various small improvements and changes on the parallel-julia code. 
 
 All the changes listed:
@@ -120,10 +143,10 @@ main.jl:
 
 
 
-#### v0.3.2
+### v0.3.2
 Z_gl is removed from the timeEvolution() which was put there only for constraints and conserved quantities check.
 
-#### v0.3.1
+### v0.3.1
 Parallelization is completed. The energy graphs for parallel vs serial code matches exactly.
 Only the -4-index Z/2-index ϕ,ψ- notation is used throughout for ease of use of parallelization. 
 This might be updated to use the -2-index Z/1-index ϕ,ψ- notation for performance purposes later. 
@@ -171,7 +194,7 @@ Next stage:
 - Finding defects with winding number calculations
 - Possibly re-parallelize with the single index notation for better perfomance (need some speed testing first)
 
-#### v0.2
+### v0.2
 Serial code is completed up to finding strings routine.
 The code takes given inital conditions, find energy at any stage, time evolve the system by solving the differential equations of the theory and take a snapshot at given intervals. 
 
@@ -216,5 +239,5 @@ Next stage:
 
 
 
-#### v0.1
+### v0.1
 Initial conditions and energy routines are completed

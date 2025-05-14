@@ -71,7 +71,7 @@ end
                          + ( (ψ[j,k+1] - ψ[j,k])/dy )^2 )/2
                         + ( abs2( (ϕ[j+1,k] - ϕ[j,k])/dx ) 
                           + abs2( (ϕ[j,k+1] - ϕ[j,k])/dy ) ) )
-                pEϕψ = -m_ϕ^2*abs2(ϕ[j,k]) + m_ψ^2*ψ[j,k]^2/2 + λ*abs2(ϕ[j,k])^2/2 + λ*eta^4/4
+                pEϕψ = -m_ϕ^2*abs2(ϕ[j,k]) + m_ψ^2*ψ[j,k]^2/2 + λ*abs2(ϕ[j,k])^2/2 + λ*η^4/4
                 #Total classical energy density
                 classicalE = kEϕψ + gEϕψ + pEϕψ
 
