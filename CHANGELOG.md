@@ -1,5 +1,10 @@
 # CHANGELOG
 
+#### v0.3.1
+Prepared the code to work with 4-index notation. There was a little problem earlier.(macro implementation didn't work, long story...) This is done to prepare the code for macro implementation which was done earlier but didn't work properly.
+
+#### v0.3
+Runge-Kutta applied for learning purposes.
 
 #### v0.2
 Serial code is completed up to finding strings routine.

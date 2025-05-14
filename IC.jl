@@ -61,7 +61,7 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
             end
         end
 
-        #4-index notation (for omega as well)
+        # # 4-index notation (for omega as well)
         # #!
         # #Test 4-indexed S_Ωzero, inv_S_Ωzero
         # S_Ωzero_f = mapZTo4Index(S_Ωzero)

@@ -32,10 +32,16 @@ function run_ev()
     #Standards:  ϕ and ψ are in 2D lattice // Z is flattened 1D N^2 lattice (for now)
     ϕ = im*zeros(Nx,Ny,2)
     ψ = zeros(Nx,Ny,2)
-    Z = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
     dϕdt = im*zeros(Nx,Ny,2)
     dψdt = zeros(Nx,Ny,2)
+    #2-index Z
+    Z = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
     dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays.
+    # #4-index Z
+    Z_t    = Array{ComplexF64,5}(undef, Nx, Nx, Ny, Ny, 2)
+    dZdt_t = Array{ComplexF64,5}(undef, Nx, Nx, Ny, Ny, 2)
+    Z_t    = OffsetArray(Z_t,lx:rx,lx:rx,ly:ry,ly:ry,0:1)     
+    dZdt_t   = OffsetArray(dZdt_t,lx:rx,lx:rx,ly:ry,ly:ry,0:1)
 
     #-Offset arrays for the symmetric lattice coordinates (for more natural physical indexing)
     ϕ = OffsetArray(ϕ,lx:rx,ly:ry,0:1)
@@ -83,11 +89,13 @@ function run_ev()
     zPE = zeroPointEnergy(Z,dZdt)
 
     #----Initial Energy----#
-    totalE, ZED = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
+    Z_t[:,:,:,:,0] .= mapZTo4Index(Z[:,:,1])
+    dZdt_t[:,:,:,:,0] = mapZTo4Index(dZdt[:,:,1])
+    totalE, ZED = energy(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t,meanSqrRenorm,zPE)
     println("Total initial energy: ", totalE)
 
     #----Time Evolution----#
-    @time time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
+    @time time_evolve!(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t,meanSqrRenorm,zPE)
 
 
 
