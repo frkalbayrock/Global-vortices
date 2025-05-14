@@ -1,7 +1,29 @@
 # CHANGELOG
 
+#### v0.4
+We tested some new methods on the serial code; mostly about macro usage for fluxes.
+We don't see any allocation improvements as long as we @inline the flux functions. (@inline'ing is very important!)
+Also have few minor changes to vectorize some calculations and more efficiently. 
+
+All the changes listed:
+
+Evolution.jl:
+- Again repositioned some code. 
+- Macros for fluxes added in the beginning. (Although, no significant improvement, there is some improvement which we may test in the parallel version later for a bigger lattice to its true effect)
+- half_step!() is vecrorized. We also noticed there was an operation (+)  which when it's replaced with (.+) improved the speed and allocations!
+- We also have a new leap_forward!() to accomodate the macros used.
+- We keep both versions at this stage.
+
+Take-aways to be applied or tested on parallel version:
+- Properly vectorize half_step!()
+- @inline flux functions if we are gonna keep this version
+- Test the macros on parallel version. If we get significant improvements then we use macros, if not we need to definitely use the @inline!
+
+
 #### v0.3.1
 Prepared the code to work with 4-index notation. There was a little problem earlier.(macro implementation didn't work, long story...) This is done to prepare the code for macro implementation which was done earlier but didn't work properly.
+Mostly repositioned the code and made sure without changing too much we send in the 4-index "Z" and "dZdt".
+
 
 #### v0.3
 Runge-Kutta applied for learning purposes.
