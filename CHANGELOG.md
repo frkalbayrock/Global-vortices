@@ -1,5 +1,9 @@
 # CHANGELOG
 
+#### v0.4.1
+We finally added the command line arguments to create the directories where the data is going to be written. Surprisingly, this was always done manually when needed until now because of being extremely lazy.
+No other change.
+
 #### v0.4
 We tested some new methods on the serial code; mostly about macro usage for fluxes.
 We don't see any allocation improvements as long as we @inline the flux functions. (@inline'ing is very important!)

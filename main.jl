@@ -24,6 +24,9 @@ using BenchmarkTools
 using Profile
 using PProf
 
+#Open the directories
+run(`mkdir -p data`)
+run(`mkdir -p data/energies`)
 
 
 function run_ev()
