@@ -71,7 +71,7 @@ end
                          + ( (ψ[j,k+1] - ψ[j,k])/dy )^2 )/2
                         + ( abs2( (ϕ[j+1,k] - ϕ[j,k])/dx ) 
                           + abs2( (ϕ[j,k+1] - ϕ[j,k])/dy ) ) )
-                pEϕψ = -m_ϕ^2*abs2(ϕ[j,k]) + m_ψ^2*ψ[j,k]^2/2 + λ*abs2(ϕ[j,k])^2/2 + λ*η^4/4
+                pEϕψ = -m_ϕ^2*abs2(ϕ[j,k]) + m_ψ^2*ψ[j,k]^2/2 + λ*abs2(ϕ[j,k])^2/2 + λ*η^4/2
                 #Total classical energy density
                 classicalE = kEϕψ + gEϕψ + pEϕψ
 
@@ -153,7 +153,7 @@ end
         #         gEϕψbkd = ( ( ( (ψ_s[J] - ψ_s[nnl_x])/dx )^2  + ( (ψ_s[J] - ψ_s[nnl_y])/dy )^2 )/2
         #                     + ( abs2( (ϕ_s[J] - ϕ_s[nnl_x])/dx ) + abs2( (ϕ_s[J] - ϕ_s[nnl_y])/dy ) ) )
         #         gEϕψ = (gEϕψfwd + gEϕψbkd)/2
-        #         pEϕψ = -m_ϕ^2*abs2(ϕ_s[J]) + m_ψ^2*ψ_s[J]^2/2 + λ*abs2(ϕ_s[J])^2/2 #+ λ*eta^4/4
+        #         pEϕψ = -m_ϕ^2*abs2(ϕ_s[J]) + m_ψ^2*ψ_s[J]^2/2 + λ*abs2(ϕ_s[J])^2/2 #+ λ*η^4/2
         #         #Total classical energy density
         #         classicalE = kEϕψ + gEϕψ + pEϕψ
 
