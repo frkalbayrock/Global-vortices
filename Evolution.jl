@@ -22,14 +22,14 @@ using JLD2
 
 
 # #!Macros to test- for speed and allocations
-# @everywhere macro ϕflux() esc(:(( (ϕ[j+1,k,2] - 2ϕ[j,k,2] + ϕ[j-1,k,2])/dx^2 
-#                                 + (ϕ[j,k+1,2] - 2ϕ[j,k,2] + ϕ[j,k-1,2])/dy^2 
+# @everywhere workers() macro ϕflux() esc(:(( (ϕ[j+1,k,2] - 2ϕ[j,k,2] + ϕ[j-1,k,2])/dx2 
+#                                 + (ϕ[j,k+1,2] - 2ϕ[j,k,2] + ϕ[j,k-1,2])/dy2 
 #                                 + ( m_ϕ^2 - α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[j,k,2]) ) * ϕ[j,k,2] ))) end
-# @everywhere macro ψflux() esc(:(( (ψ[j+1,k,2] - 2ψ[j,k,2] + ψ[j-1,k,2])/dx^2 
-#                                 + (ψ[j,k+1,2] - 2ψ[j,k,2] + ψ[j,k-1,2])/dy^2   
+# @everywhere workers() macro ψflux() esc(:(( (ψ[j+1,k,2] - 2ψ[j,k,2] + ψ[j-1,k,2])/dx2 
+#                                 + (ψ[j,k+1,2] - 2ψ[j,k,2] + ψ[j,k-1,2])/dy2   
 #                                 - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k,2] ))) end
-# @everywhere macro Zflux() esc(:(( (Z[j+1,l,k,m,2] - 2Z[j,l,k,m,2] + Z[j-1,l,k,m,2])/dx^2 
-#                                 + (Z[j,l,k+1,m,2] - 2Z[j,l,k,m,2] + Z[j,l,k-1,m,2])/dy^2
+# @everywhere workers() macro Zflux() esc(:(( (Z[j+1,l,k,m,2] - 2Z[j,l,k,m,2] + Z[j-1,l,k,m,2])/dx2 
+#                                 + (Z[j,l,k+1,m,2] - 2Z[j,l,k,m,2] + Z[j,l,k-1,m,2])/dy2
 #                                 - ( m_ρ^2 + α*abs2(ϕ[j,k,2]) + β*ψ[j,k,2]^2 ) * Z[j,l,k,m,2] ))) end
 
 
@@ -38,7 +38,7 @@ using JLD2
 export time_evolve!
 function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
 
-    #Snapshotting interval
+    #--Snapshotting interval
     if round(nt/nsnaps,RoundDown) == 0
         snapInterval = 1
         println("---Caution: Number of time steps is smaller than snaps!---")
@@ -52,6 +52,7 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
         end
     end
 
+    #--Open data files
     ϕdataIO = open("data/phi.dat","w") 
     ψdataIO = open("data/psi.dat","w")
     energyIO = open("data/energy.dat","w")
@@ -61,26 +62,25 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
 
     for t=1:nt
         
-        #Move a time step
+        #--Move a time step
         @everywhere workers() half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
         @everywhere workers() update_Paddings()
         @everywhere workers() begin
             leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,($meanSqrRenorm))
             half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,2)
         #Shift next time values to present time for the next step
-            updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+            updateForNextStep(dϕdt,dψdt,dZdt)
         end
 
 
-
-        # Take a snap
+        #--Take a snap
         if mod(t,snapInterval) == 0
 
-            #Calculate energy
+            #-Calculate energy
             totalE = energy!(ZED_gl,meanSqrRenorm,zPE)
             
 
-            #Update global fields for recording
+            #-Update global fields for recording
             for i=2:nprocs()
                 lx_p, rx_p, ly_p, ry_p = chunker(i) #_p: physical
                 ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ϕ[lx_l:rx_l,
@@ -129,7 +129,6 @@ end
 
 
 # @everywhere function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
-#     dt_half =dt/2   #!not sure yet if i wanna keep them. harder to read.
 #     for j=padd+1:Nx_loc+padd
 #         for k=padd+1:Ny_loc+padd
 #             ϕ[j,k,2] = ϕ[j,k,t] + dt_half*( dϕdt[j-padd,k-padd,t] ) 
@@ -144,7 +143,7 @@ end
 # end
 
 
-@everywhere function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
+@everywhere workers() function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
     @views begin
     ϕ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .= ϕ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .+ dt_half*( dϕdt[:,:,t] ) 
     ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .= ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .+ dt_half*( dψdt[:,:,t] )
@@ -170,11 +169,11 @@ end
 
 # end
 
-@everywhere function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
+@everywhere workers() function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
     for j=padd+1:Nx_loc+padd
         for k=padd+1:Ny_loc+padd
             #Calculate fluxes for ϕ and ψ
-            @inline @views ϕ_flux , ψ_flux = fluxes_ϕ_ψ(ϕ[:,:],ψ[:,:],Z[:,:,:,:],meanSqrRenorm,j,k)
+            @inline ϕ_flux , ψ_flux = fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k)
             dϕdt[j-padd,k-padd,2] = dϕdt[j-padd,k-padd,1] + dt*( ϕ_flux )
             dψdt[j-padd,k-padd,2] = dψdt[j-padd,k-padd,1] + dt*( ψ_flux )
             for l=1:Nx
@@ -189,33 +188,31 @@ end
 end
 
 
-@everywhere @inline function fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k)
+@everywhere workers() @inline function fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k)
+
     #2-point function
     meanSqr_Rho = @views sum(abs2, Z[j,:,k,:]) #!i need to check if this is the same as 2-index notation.
 
-    ϕ_flux = ( (ϕ[j+1,k] - 2ϕ[j,k] + ϕ[j-1,k])/dx^2 + (ϕ[j,k+1] - 2ϕ[j,k] + ϕ[j,k-1])/dy^2 
+    ϕ_flux = ( (ϕ[j+1,k] - 2ϕ[j,k] + ϕ[j-1,k])/dx2 + (ϕ[j,k+1] - 2ϕ[j,k] + ϕ[j,k-1])/dy2
             + ( m_ϕ^2 - α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[j,k]) ) * ϕ[j,k] )
 
-    ψ_flux = ( (ψ[j+1,k] - 2ψ[j,k] + ψ[j-1,k])/dx^2 + (ψ[j,k+1] - 2ψ[j,k] + ψ[j,k-1])/dy^2   
+    ψ_flux = ( (ψ[j+1,k] - 2ψ[j,k] + ψ[j-1,k])/dx2 + (ψ[j,k+1] - 2ψ[j,k] + ψ[j,k-1])/dy2   
             - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k] )
 
 return ϕ_flux ,ψ_flux
 end
 
 
-@everywhere @inline function flux_Z(ϕ,ψ,Z,j,l,k,m)
-    Z_flux = ( (Z[j+1,l,k,m] - 2Z[j,l,k,m] + Z[j-1,l,k,m])/dx^2 
-             + (Z[j,l,k+1,m] - 2Z[j,l,k,m] + Z[j,l,k-1,m])/dy^2
+@everywhere workers() @inline function flux_Z(ϕ,ψ,Z,j,l,k,m)
+    Z_flux = ( (Z[j+1,l,k,m] - 2Z[j,l,k,m] + Z[j-1,l,k,m])/dx2
+             + (Z[j,l,k+1,m] - 2Z[j,l,k,m] + Z[j,l,k-1,m])/dy2
              - ( m_ρ^2 + α*abs2(ϕ[j,k]) + β*ψ[j,k]^2 ) * Z[j,l,k,m] )
 end
 
 
-@everywhere function updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
+@everywhere workers() function updateForNextStep(dϕdt,dψdt,dZdt)
     #Shift time coordinates
     @views begin
-        # ϕ[:,:,1] .= ϕ[:,:,2]  #!not needed anymore, since the time coordinates are removed for the fields.
-        # ψ[:,:,1] .= ψ[:,:,2]
-        # Z[:,:,:,:,1] .= Z[:,:,:,:,2]
         dϕdt[:,:,1] .= dϕdt[:,:,2]
         dψdt[:,:,1] .= dψdt[:,:,2]
         dZdt[:,:,:,:,1] .= dZdt[:,:,:,:,2]

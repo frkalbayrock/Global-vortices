@@ -1,9 +1,41 @@
 # CHANGELOG
 
-### v1.1.1 - Small Fixes and Beautification
-We have found few possible bugs in getData_f() functions. ALso some realignment, organization is done to make the code more readable.
+### v1.1.2 - Global Variables and Small Fixes Update
+The main change is that the function that determines the neighbours of the chunks is now only called once in the beginning and n_i's are now defined as global constants to avoid repeated calls every time update_Paddings() is called. 
 
-All the changes liste: 
+All the changes listed: 
+
+#### Auxiliary.jl:
+- Added comments to some functions that lacked before.
+- Small variable name change in chunker() to be more clear.
+- Repositioned few functions in the order of their call flow.
+- update_Paddings() no longer calls find_neigbours(); neighbour are now determined as constants in the beginning of the code.
+
+#### Evolution.jl: 
+- macros and functions that only run on the workers are now defined only on the workers.
+- updateForNextStep(): now removed the fields as arguments as they are not updated anyway in the leapFrog method.
+- fluxes_ϕ_ψ() arguments no longer have specific ranges as the full arrays already being sent. (Thus, we can remove the @views too.)
+
+#### IC.jl:
+- When chunking Z, the ends of the chunks were being defined as globals before. We just added "local" in the beginning to make them local variables. Better way of doing this is to put that part into a function which we wrote the function below but there are few issues with it. Couldn't figure out a way to do that yet. 
+- As mentioned in the previous point, ic_Z!() is now defined but commented out as it is not working properly (yet). 
+
+#### main.jl:
+- The local fields and their time derivatives that are defined on the chunks are now initialized as global constants.
+- find_neighbours() is now called in the beginning to determine the neighbours for each workers chunk once rather than calling it everytime we call update_Paddings(). Corresponding n_i's are global constants now.
+
+#### Parameters.jl:
+- dx^2 and dy^2 are now precalculated as new constants as dx2 and dy2 to performance on tight loops.
+
+
+In the next update, it is planned to implement the results of @code_warntype analysis. This will eliminate the type inference allocations. (This one is experimentally done on the serial code and seen lots of improvements already. The plan is to test it on the parallel code and make the necessary changes for improvements on the worker allocations.) 
+
+
+
+### v1.1.1 - Small Fixes and Beautification
+We have found few possible bugs in getData_f() functions. Also some realignment, organization is done to make the code more readable.
+
+All the changes listed: 
 
 ##### Auxiliary.jl:
 - In update_Paddings() and getData_f() the array indices are aligned for easy reading.

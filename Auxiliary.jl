@@ -77,64 +77,33 @@ end
 
 
 
-
+#Returns the coordinates of the global ends of the lattice chunk given proc id
 export chunker
 function chunker(proc_id::Int)
     
     #Cartesian coordinate of the chunk
     i_procs, j_procs = chunk_cart(proc_id)
 
-    #Global coordinates of the ends of the chunks 
-    lx_loc = Int((Nx_loc * i_procs - (Nx/2-1)))
-    rx_loc = Int(lx_loc + Nx_loc - 1)
-    ly_loc = Int((Ny_loc * j_procs - (Ny/2-1)))
-    ry_loc = Int(ly_loc + Ny_loc - 1)
+    #Global coordinates of the ends of the chunks
+    #(assumes OffsetArrays)
+    lx_p = Int((Nx_loc * i_procs - (Nx/2-1)))
+    rx_p = Int(lx_p + Nx_loc - 1)
+    ly_p = Int((Ny_loc * j_procs - (Ny/2-1)))
+    ry_p = Int(ly_p + Ny_loc - 1)
 
-return lx_loc, rx_loc, ly_loc, ry_loc
+return lx_p, rx_p, ly_p, ry_p
 end
 
 
 
 
-
-#Gives the Cartesian coordinate of the chunk
+#Returns the Cartesian coordinate of the chunk of a given proc id
 function chunk_cart(proc_id::Int)
     i_procs = Int(mod((proc_id-2),nprocs_perdim[1]))
     j_procs = Int((proc_id-2 - i_procs)/nprocs_perdim[1])
 
 return i_procs, j_procs
 end
-
-
-
-
-
-export find_neighbours
-function find_neighbours(proc_id::Int)
-    
-    #Get Cartesian coordinate of the chunk first
-    i_procs, j_procs = chunk_cart(proc_id)
-    nnl, nnr, nnb, nnt = chunk_pbc(i_procs,j_procs) #nearest neighbours l:left, r:right, b:bottom, t:top
-
-    #Neighbours
-    n_left =   chunk_id(nnl, j_procs)
-    n_right =  chunk_id(nnr, j_procs)
-    n_bottom = chunk_id(i_procs, nnb)
-    n_top =    chunk_id(i_procs, nnt)
-
-return n_left, n_right, n_bottom, n_top
-end
-
-
-
-
-
-#Gets the Cartesian coordinate of the chunk and gives back proc_id
-function chunk_id(i_procs::Int,j_procs::Int)
-    proc_id = j_procs * nprocs_perdim[1] + i_procs + 2
-return proc_id
-end
-
 
 
 
@@ -162,6 +131,32 @@ end
 
 
 
+#Gets the Cartesian coordinate of the chunk and gives back proc_id
+function chunk_id(i_procs::Int,j_procs::Int)
+    proc_id = j_procs * nprocs_perdim[1] + i_procs + 2
+return proc_id
+end
+
+
+
+
+export find_neighbours
+function find_neighbours(proc_id::Int)
+    
+    #Get Cartesian coordinate of the chunk first
+    i_procs, j_procs = chunk_cart(proc_id)
+    nnl, nnr, nnb, nnt = chunk_pbc(i_procs,j_procs) #nearest neighbours l:left, r:right, b:bottom, t:top
+
+    #Neighbours
+    n_left =   chunk_id(nnl, j_procs)
+    n_right =  chunk_id(nnr, j_procs)
+    n_bottom = chunk_id(i_procs, nnb)
+    n_top =    chunk_id(i_procs, nnt)
+
+return n_left, n_right, n_bottom, n_top
+end
+
+
 
 #---Transfer Functions
 #   So far this is the only way it works with @fetchfrom that's why it is done not so clever way, on purpose.
@@ -169,8 +164,6 @@ end
 #Data exchange initiator to fill paddings with updated data from neighboring blocks
 # function update_Paddings(t::Int)
 @everywhere workers() function update_Paddings()
-        #Find neighbors
-        n_left, n_right, n_bottom, n_top = find_neighbours(myid())
         #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
         ϕ[1:padd,             padd+1:Ny_loc+padd] .= @fetchfrom n_left   getData_ϕ(1)
         ϕ[Nx_loc+padd+1:end,  padd+1:Ny_loc+padd] .= @fetchfrom n_right  getData_ϕ(2)
@@ -214,7 +207,7 @@ end
 # @everywhere workers() 
 # export getData_ϕ
 # function getData_ϕ(neighbour::Int,t::Int)
-@everywhere workers() function getData_ϕ(neighbour)
+@everywhere workers() function getData_ϕ(neighbour::Int)
     #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
     if neighbour == 1
         return @views ϕ[Nx_loc+1:end-padd,   padd+1:Ny_loc+padd]::SubArray{ComplexF64, 2, Array{ComplexF64, 2}, Tuple{UnitRange{Int64}, UnitRange{Int64}}, false}
@@ -233,7 +226,7 @@ end
 # @everywhere workers() 
 # export getData_Z
 # function getData_Z(neighbour::Int,t::Int)
-@everywhere workers() function getData_Z(neighbour)
+@everywhere workers() function getData_Z(neighbour::Int)
     #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
     if neighbour == 1
         return @views Z[Nx_loc+1:end-padd,    :, padd+1:Ny_loc+padd,  :]::SubArray{ComplexF64, 4, Array{ComplexF64, 4}, Tuple{UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}, Base.Slice{Base.OneTo{Int64}}}, false}

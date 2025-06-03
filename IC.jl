@@ -54,7 +54,12 @@ function initialConditions!(ϕ_gl,ψ_gl)
     
     #---Chunk Z and send it to workers
     @everywhere workers() begin
-        lx_p, rx_p, ly_p, ry_p = chunker(myid())
+
+        #Get the global ends of the lattice chunk
+        #chunker() is written with offset arrays in mind.
+        #Thus we shift the coordinates for 1 based arrays 
+        #(since these sqrt and inverse sqrt matrices are not offset unlike fields)
+        local lx_p, rx_p, ly_p, ry_p = chunker(myid())
         lx_p = Int(Nx/2+lx_p)
         rx_p = Int(Nx/2+rx_p)
         ly_p = Int(Ny/2+ly_p)
@@ -109,8 +114,46 @@ end
     end
 end
 
-# #!for now I am skipping this one
 # @everywhere workers() function ic_Z(Z,dZdt)
+# @everywhere workers() function ic_Z!()
+
+#     # #Get the global ends of the lattice chunk
+#     # #chunker() is written with offset arrays in mind.
+#     # #Thus we shift the coordinates for 1 based arrays 
+#     # #(since these sqrt and inverse sqrt matrices are not offset unlike fields)
+#     # lx_p, rx_p, ly_p, ry_p = chunker(myid())
+#     # lx_p = Int(Nx/2+lx_p)
+#     # rx_p = Int(Nx/2+rx_p)
+#     # ly_p = Int(Ny/2+ly_p)
+#     # ry_p = Int(Ny/2+ry_p)
+
+#     # #!
+#     # println("Process $(myid()): lx_p exists in scope: ", isdefined(Main, :lx_p))
+#     # println("Type of this: ", typeof(lx_p))
+#     # println("Is is constant: ", isconst(Main, :lx_p))
+#     # #!
+
+#     # Z[padd+1:Nx_loc+padd,:,
+#     #     padd+1:Ny_loc+padd,:] .= -im/sqrt(2) .* ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
+#     # dZdt[:,:,:,:,1]         .=   1/sqrt(2) .* ($S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
+
+#     # #!
+#     # global counterA = 0
+#     # open("data/zerosofZ.dat","w") do io   
+#     #     for j=padd+1:padd+Nx_loc
+#     #         for k=padd+1:padd+Ny_loc
+#     #             for l=1:Nx
+#     #                 for m=1:Ny
+#     #                     if  abs(Z[j,l,k,m]) < 1e-6
+#     #                         global counterA += 1
+#     #                     end
+#     #                 end
+#     #             end
+#     #         end
+#     #     end
+#     # end
+#     # #!
+
 # end
    
 #omegaIC calculates the Ω^2 matrix used in CQC calculations.
