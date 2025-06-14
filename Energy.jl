@@ -10,33 +10,33 @@ using OffsetArrays
 @everywhere using Profile, PProf
 
 export energy!
-function energy!(ZED,meanSqrRenorm,zPE)
+function energy!(ZED_gl,meanSqrRenorm,zPE)
 
     #--Update the paddings before calculating energy
-    @everywhere workers() update_Paddings()
+    @everywhere workers() update_Paddings!(ϕ,ψ,Z)
 
     #--Calculate energy on each chunk
-    @everywhere workers() totalE_loc , ZED_loc = energy_calculation(ϕ,ψ,Z,dϕdt,dψdt,dZdt,($meanSqrRenorm),($zPE))
+    @everywhere workers() totalE_loc = energy_calculation!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,($meanSqrRenorm),($zPE))
 
 
     #--Combine local energies for total energy 
-    totalE = 0
+    totalE = 0.
     for i in workers()
-        totalE += @fetchfrom i Main.totalE_loc
+        totalE += (@fetchfrom i Main.totalE_loc)::Float64
     end
     
 
     #---Collect ZED to global
     for i in workers()
         lx_p, rx_p, ly_p, ry_p = chunker(i)
-        ZED[lx_p:rx_p, ly_p:ry_p] .= @fetchfrom i Main.ZED_loc[:,:]
+        ZED_gl[lx_p:rx_p, ly_p:ry_p] .= (@fetchfrom i Main.ZED[:,:])::Array{Float64, 2}
     end
 
 return totalE
 end
 
 
-@everywhere workers() function energy_calculation(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
+@everywhere workers() function energy_calculation!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,meanSqrRenorm,zPE)
 
 
 
@@ -55,9 +55,6 @@ end
         #Total Energies
         totalE = 0.
 
-        #!
-        ZED_loc = zeros(Nx_loc,Ny_loc)
-        # ZED_loc = OffsetArray(ZED_loc,lx:rx,ly:ry)
 
         #Integrate over all space
         for j=padd+1:padd+Nx_loc
@@ -108,13 +105,13 @@ end
                 #Total energy
                 totalE = totalE + dx*dy*sumE
 
-                #!Change later
-                ZED_loc[j-padd,k-padd] = quantumEZ
+                #Energy Density of Z field
+                ZED[j-padd,k-padd] = quantumEZ
 
             end
         end
-#!Change later
-return totalE,ZED_loc
+
+return totalE
 end
 
 

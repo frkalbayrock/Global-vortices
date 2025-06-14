@@ -16,6 +16,7 @@ using Distributed
 @everywhere using Profile
 @everywhere using PProf
 @everywhere using DelimitedFiles
+@everywhere using InteractiveUtils
 
 #------------------------------------------------------------------------------------------------#
 #initialConditions sets the initial conditions for the fields ϕ,ψ,Z and calculates the renormalization factor
@@ -40,8 +41,8 @@ function initialConditions!(ϕ_gl,ψ_gl)
 
     #---Calculate Ω
     #2-index to 1-index mapping
-    ϕ_s = @views flattenDimension(ϕ_gl[:,:])
-    ψ_s = @views flattenDimension(ψ_gl[:,:])
+    ϕ_s = flattenDimension(ϕ_gl)
+    ψ_s = flattenDimension(ψ_gl)
     #Get Sqrt(Omega) and its inverse matrices
     S_Ωzero, inv_S_Ωzero = omegaIC(ϕ_s,ψ_s)
 
@@ -68,6 +69,79 @@ function initialConditions!(ϕ_gl,ψ_gl)
         Z[padd+1:Nx_loc+padd,:,
           padd+1:Ny_loc+padd,:] .= -im/sqrt(2) .* ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
         dZdt[:,:,:,:,1]         .=   1/sqrt(2) .* ($S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
+
+        # #!
+        # global counterA = 0
+        # open("data/zerosofZ.dat","w") do io   
+        #     for j=padd+1:padd+Nx_loc
+        #         for k=padd+1:padd+Ny_loc
+        #             for l=1:Nx
+        #                 for m=1:Ny
+        #                     if  abs(Z[j,l,k,m]) < 1e-6
+        #                         global counterA += 1
+        #                     end
+        #                 end
+        #             end
+        #         end
+        #     end
+        # end
+        # #!
+
+        #--Scope and slicing check
+        # if myid()==2
+
+        #     # #!
+        #     # println("Process $(myid()): lx_p exists in scope: ", isdefined(Main, :lx_p))
+        #     # println("Type of this: ", typeof(lx_p))
+        #     # println("Is is constant: ", isconst(Main, :lx_p))
+        #     # #!
+
+        #     #!
+        #     # Print size information before assignment
+        #     println("Worker $(myid()): Size of full inv_S_Ωzero_f: ", size($inv_S_Ωzero_f))
+        #     println("Worker $(myid()): Memory of full (MB): ", Base.summarysize(($inv_S_Ωzero_f)) / 1e6)
+        #     println("Worker $(myid()): Size of slice: ", 
+        #             size(($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]))
+        #     println("Worker $(myid()): Memory of slice (MB): ", 
+        #             Base.summarysize(($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]) / 1e6)
+        #     #!
+
+        #     # #!
+        #     # # Test memory allocation with and without @views
+        #     # println("Without @views:")
+        #     # @time slice1 = ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
+        #     # println("With @views:")
+        #     # @time slice2 = @views ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
+
+        #     # # Compare memory footprint
+        #     # println("Memory without @views: ", Base.summarysize(slice1) / 1e6, " MB")
+        #     # println("Memory with @views: ", Base.summarysize(slice2) / 1e6, " MB")
+        #     # #!
+
+            
+
+        #     Base.GC.enable(false)
+
+        #     # Track memory before receiving the matrix
+        #     mem_before = Base.summarysize(Main)
+        #     println("Memory before: ", 
+        #             (mem_before)/1e6, " MB")
+                    
+        #     # Assign to temporary variable to see exactly when allocation happens
+        #     temp = ($inv_S_Ωzero_f)  # Full matrix transferred here
+        #     println("Memory difference after receiving full matrix: ", 
+        #             (Base.summarysize(Main) - mem_before)/1e6, " MB")
+                    
+        #     mem_before = Base.summarysize(Main)
+
+        #     # Create slice
+        #     slice = ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
+        #     println("Memory difference after slicing: ", 
+        #             (Base.summarysize(Main) - mem_before)/1e6, " MB")
+
+
+
+        # end
     end
 
 
@@ -161,18 +235,18 @@ end
 function omegaIC(ϕ_s,ψ_s)
     
     #Calculate the matrix Ω^2
-    Ω=zeros(N^2,N^2)
+    Ω=zeros(N2,N2)
     # #! OMEGA TESTER -- Keep it for now in case need to test again.
-        # CCD=zeros(N^2,N^2)
-        # Ã=zeros(N^2,N^2)
-        # B̃=zeros(N^2,N^2)
-        # A=zeros(N^2,N^2)
-        # B=zeros(N^2,N^2)
-        # W=zeros(N^2,N^2)
-        # Q=zeros(N^2,N^2)
+        # CCD=zeros(N2,N2)
+        # Ã=zeros(N2,N2)
+        # B̃=zeros(N2,N2)
+        # A=zeros(N2,N2)
+        # B=zeros(N2,N2)
+        # W=zeros(N2,N2)
+        # Q=zeros(N2,N2)
 
-    for J=1:N^2
-        for K=1:N^2
+    for J=1:N2
+        for K=1:N2
             if (J==K)   #C, C̃, D
                 Ω[J,K] = Ω[J,K]+ 2/dx^2 + 2/dy^2 + (m_ρ^2 + α*abs2(ϕ_s[J]) + β*ψ_s[K]^2)
                 # CCD[J,K]= CCD[J,K]+ 2/dx^2 + 2/dy^2 + (m_ρ^2 + alpha*abs2(ϕ_s[J]) + beta*ψ_s[K]^2) #!
@@ -181,12 +255,12 @@ function omegaIC(ϕ_s,ψ_s)
                 Ω[J,K] = Ω[J,K] + -1/dy^2   #Ã
                 # Ã[J,K] = Ã[J,K] + -1/dy^2 #!
 
-                if (mod(K,N)==0 && K!=N^2)  #W
+                if (mod(K,N)==0 && K!=N2)  #W
                     Ω[J,K] = Ω[J,K] + 1/dy^2
                     # W[J,K] = W[J,K] + 1/dy^2#!
                 end
 
-            elseif (J==1 && K==N^2) #Ã  and W
+            elseif (J==1 && K==N2) #Ã  and W
                 Ω[J,K] = Ω[J,K] + -1/dy^2   #Ã 
                 # Ã[J,K] = Ã[J,K] + -1/dy^2#!
 
@@ -197,12 +271,12 @@ function omegaIC(ϕ_s,ψ_s)
                 Ω[J,K] = Ω[J,K] + -1/dy^2   #B̃
                 # B̃[J,K] = B̃[J,K] + -1/dy^2#!
 
-                if (mod(J,N)==0 &&  J!=N^2) #W
+                if (mod(J,N)==0 &&  J!=N2) #W
                     Ω[J,K] = Ω[J,K] + 1/dy^2
                     # W[J,K] = W[J,K] + 1/dy^2#!
                 end
 
-            elseif (J==N^2 && K==1) #B̃ and W
+            elseif (J==N2 && K==1) #B̃ and W
                 Ω[J,K] = Ω[J,K] + -1/dy^2   #B̃
                 # B̃[J,K] = B̃[J,K] + -1/dy^2#!
                 
@@ -212,14 +286,14 @@ function omegaIC(ϕ_s,ψ_s)
             elseif (J==K+N && J>N)  #A
                 Ω[J,K] = Ω[J,K] + -1/dx^2
                 # A[J,K] = A[J,K] + -1/dx^2#!
-            elseif (J in 1:N && K == J+N^2-N )  #A
+            elseif (J in 1:N && K == J+N2-N )  #A
                     Ω[J,K] = Ω[J,K] + -1/dx^2
                     # A[J,K] = A[J,K] + -1/dx^2#!
 
-            elseif (J==K-N && J<N^2-N+1)     #B
+            elseif (J==K-N && J<N2-N+1)     #B
                 Ω[J,K] = Ω[J,K] + -1/dx^2
                 # B[J,K] = B[J,K] + -1/dx^2 #!
-            elseif (J in N^2-N+1:N^2 && K==J-(N^2-N))   #B
+            elseif (J in N2-N+1:N2 && K==J-(N2-N))   #B
                     Ω[J,K] = Ω[J,K] + -1/dx^2
                     # B[J,K] = B[J,K] + -1/dx^2#!
 
@@ -233,27 +307,22 @@ function omegaIC(ϕ_s,ψ_s)
         end
     end
 
+    #Letting Julia know this is a Symmetric type for performance
+    Ω = Symmetric(Ω)
+
+
     ###################--CHOOSE ONE OF THEM--###########################
-    # # Taking sqrt of matrix Ω (version 1) #!--->This looks faster for N=3 test (but for N=60,70 got slower and uses more ram)
-    # eigenValues=eigvals(Ω)
-    # similarityMatrix = eigvecs(Ω)
-    # diag_S_Ωzero=zeros(1:N^2,1:N^2)
-    # for J=1:N^2
-    #     for K=1:N^2
-    #         if J==K
-    #             diag_S_Ωzero[J,K] = eigenValues[J]^(1/4)
-    #         end
-    #     end
-    # end
-    # S_Ωzero= similarityMatrix * diag_S_Ωzero * transpose(similarityMatrix)
-    # inv_S_Ωzero = inv(S_Ωzero)
-
-
-    #Version 2 #!---> seems to be slower at the N=3 test (but for N=60,70 got faster and uses less ram!)
-    S_Ωzero = zeros(N^2,N^2)
-    inv_S_Ωzero = zeros(N^2,N^2)
-    S_Ωzero = sqrt(sqrt(Ω))  #S_ stands for square root
+    # Taking sqrt of matrix Ω (version 1) #!--->This looks faster for N=3 test (but for N=60,70 got slower and uses more ram)
+    eigenVals, eigenVecs = eigen(Ω)
+    S_Ωzero = Symmetric(eigenVecs * Diagonal(eigenVals.^(1/4)) * eigenVecs')
     inv_S_Ωzero = inv(S_Ωzero)
+
+
+    # #Version 2 #!---> seems to be slower at the N=3 test (but for N=60,70 got faster and uses less ram!)
+    # S_Ωzero = zeros(N2,N2)
+    # inv_S_Ωzero = zeros(N2,N2)
+    # S_Ωzero = sqrt(sqrt(Ω))  #S_ stands for square root
+    # inv_S_Ωzero = inv(S_Ωzero)
 
     ####################################################################
 
@@ -277,7 +346,7 @@ export renormalization
 function renormalization()
     corner_id = nprocs()
     # Int(nprocs_perdim[1]+1)
-    meanSqrRenorm = @fetchfrom corner_id sum(abs2,Main.Z[Nx_loc+padd,:,Ny_loc+padd,:])
+    meanSqrRenorm = (@fetchfrom corner_id sum(abs2,Main.Z[Nx_loc+padd,:,Ny_loc+padd,:]))::Float64
     println("<ρ^2>: ",meanSqrRenorm)
 
 return meanSqrRenorm
@@ -290,8 +359,8 @@ function zeroPointEnergy()
     #Get the proc id of the corner of x_max,y_max
     corner_id = nprocs()
     #Fetch from the corner chunk
-    Z_partial = @fetchfrom corner_id Main.Z[rx_l-1:rx_l,:,ry_l-1:ry_l,:]
-    dZdt_partial = @fetchfrom corner_id Main.dZdt[rx_l-padd,:,ry_l-padd,:,1]
+    Z_partial = (@fetchfrom corner_id Main.Z[rx_l-1:rx_l,:,ry_l-1:ry_l,:])::Array{ComplexF64, 4}
+    dZdt_partial = (@fetchfrom corner_id Main.dZdt[rx_l-padd,:,ry_l-padd,:,1])::Array{ComplexF64, 2}
 
     #Calculate zPE
     kEZRen = 0.

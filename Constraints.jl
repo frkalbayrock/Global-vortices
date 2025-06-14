@@ -15,10 +15,10 @@ function constraints_checker(Z,dZdt)
     constraint_3 = im.*(Z*P' - conj.(Z)*transpose(P))
 
     #Check if the constraints satisfied
-    c1 = all(abs(constraint_1[J,K]) < 1e-8 for J in 1:N^2 , K in 1:N^2)
-    c2 = all(abs(constraint_2[J,K]) < 1e-8 for J in 1:N^2 , K in 1:N^2)
+    c1 = all(abs(constraint_1[J,K]) < 1e-8 for J in 1:N2 , K in 1:N2)
+    c2 = all(abs(constraint_2[J,K]) < 1e-8 for J in 1:N2 , K in 1:N2)
     c3 = all( J==K ? (abs(real(constraint_3[J,K])-1) < 1e-8  && abs(imag(constraint_3[J,K])) < 1e-8) 
-    : abs(constraint_3[J,K]) < 1e-8 for J in 1:N^2 , K in 1:N^2)
+    : abs(constraint_3[J,K]) < 1e-8 for J in 1:N2 , K in 1:N2)
 
     #Check if the constraints satisfied
     c1 = zero_checker(constraint_1)
@@ -39,7 +39,7 @@ function constraints_checker(Z,dZdt)
     #     #     writedlm(io2,constraint_3)
     #     # end
     #     #Constraint-2   
-    #     # c2 = all(abs(constraint_2[J,K]) < 1e-8 for J in 1:N^2 , K in 1:N^2)
+    #     # c2 = all(abs(constraint_2[J,K]) < 1e-8 for J in 1:N2 , K in 1:N2)
     #     # println("Constraint-2: --> ",c2," <---")
     # end
 

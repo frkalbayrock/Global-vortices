@@ -1,5 +1,5 @@
 module Parameters
-export dx,dy,dt,N,Nx,Ny,L,lx,rx,ly,ry,nt,nsnaps, dt_half,dx2,dy2
+export dx,dy,dt,N,Nx,Ny,L,lx,rx,ly,ry,nt,nsnaps, dt_half,dx2,dy2,N2
 export λ,α,β,η,m_ρ,m_ϕ,m_ψ
 export nprocs_perdim,Nx_loc,Ny_loc,padding_size,padd
 export lx_l,rx_l,ly_l,ry_l 
@@ -8,6 +8,7 @@ export lx_l,rx_l,ly_l,ry_l
 const N=20
 const Nx=N
 const Ny=N
+const N2=N^2
 const lx=Int(-Nx/2+1)
 const rx=Int(Nx/2)
 const ly=lx

@@ -64,7 +64,7 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
         
         #--Move a time step
         @everywhere workers() half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
-        @everywhere workers() update_Paddings()
+        @everywhere workers() update_Paddings!(ϕ,ψ,Z)
         @everywhere workers() begin
             leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,($meanSqrRenorm))
             half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,2)
@@ -83,10 +83,10 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
             #-Update global fields for recording
             for i=2:nprocs()
                 lx_p, rx_p, ly_p, ry_p = chunker(i) #_p: physical
-                ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ϕ[lx_l:rx_l,
-                                                                    ly_l:ry_l] 
-                ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ψ[lx_l:rx_l,
-                                                                    ly_l:ry_l] 
+                ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= (@fetchfrom i Main.ϕ[lx_l:rx_l,
+                                                                  ly_l:ry_l])::Array{ComplexF64, 2}
+                ψ_gl[lx_p:rx_p,ly_p:ry_p] .= (@fetchfrom i Main.ψ[lx_l:rx_l,
+                                                                  ly_l:ry_l])::Array{Float64, 2}
             end
 
 
@@ -140,6 +140,7 @@ end
 #             end
 #         end
 #     end
+# return nothing
 # end
 
 
@@ -149,6 +150,7 @@ end
     ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .= ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .+ dt_half*( dψdt[:,:,t] )
     Z[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:] .= Z[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:] .+ dt_half*( dZdt[:,:,:,:,t] )
     end
+return nothing
 end
 
 #!Macro
@@ -166,7 +168,7 @@ end
 #             end
 #         end
 #     end
-
+# return nothing
 # end
 
 @everywhere workers() function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
@@ -185,6 +187,7 @@ end
             end
         end
     end
+return nothing
 end
 
 
@@ -217,6 +220,7 @@ end
         dψdt[:,:,1] .= dψdt[:,:,2]
         dZdt[:,:,:,:,1] .= dZdt[:,:,:,:,2]
     end
+return nothing
 end
 
 # 2-index notation (Leap-Frog)

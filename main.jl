@@ -56,11 +56,13 @@ run(`mkdir -p data/energies`)
 
 #---Initialize the field arrays
 
-    #Initilize the Global Lattice Arrays 
+    #Initilize the Global Lattice Arrays
+    b = @allocated begin #!we keep these now until we finish the testing
     const ϕ_gl = OffsetArray(im*zeros(Nx, Ny),lx:rx,ly:ry)
     const ψ_gl = OffsetArray(zeros(Nx, Ny),lx:rx,ly:ry)
     const ZED_gl = OffsetArray(zeros(Nx,Ny),lx:rx,ly:ry)
-
+    end
+    println("Allocated: ",b/1e6," MB")
 
     #Initilize the Local Chunk Field Arrays
         #Standards:  ϕ and ψ are in 2D lattice // Z can be on the flattened 1D N^2 lattice or native 2D lattice
@@ -69,6 +71,7 @@ run(`mkdir -p data/energies`)
         const ψ =       zeros(Nx_loc+padding_size, Ny_loc+padding_size)
         const dϕdt = im*zeros(Nx_loc, Ny_loc, 2)
         const dψdt =    zeros(Nx_loc, Ny_loc, 2)
+        const ZED  =    zeros(Nx_loc, Ny_loc)
         #2-index Z
         # Z =    Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
         # dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2)
@@ -114,7 +117,10 @@ function run_ev()
 
 
     #----Initial Conditions----#
-    @time initialConditions!(ϕ_gl,ψ_gl)
+    a = @allocated begin #!we keep these now until we finish the testing
+    initialConditions!(ϕ_gl,ψ_gl)
+    end
+    println("Initial conditions allocated: ",a/1e6," MB")
 
     #Record initial conditions
     writedlm(ioϕ,ϕ_gl[:,:])

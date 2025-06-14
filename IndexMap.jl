@@ -46,18 +46,15 @@ function ravelDimension(f)
 
     #Check if the incoming field is real or complex for memory purposes(we define f_s accordingly)
     if eltype(f) == Float64
-        f_t = Array{Float64,2}(undef, Nx,Ny)    #"t" stands for "two-index"
+        f_t = OffsetArray(Array{Float64,2}(undef, Nx,Ny),lx:rx,ly:ry)    #"t" stands for "two-index"
     elseif eltype(f) == ComplexF64
-        f_t = Array{ComplexF64,2}(undef, Nx,Ny)
+        f_t = OffsetArray(Array{ComplexF64,2}(undef, Nx,Ny),lx:rx,ly:ry)
     else
         println("---> Error: given type not float or complex float.")
         println(typeof(f))
-        # print("---> Error: given type not float or complex float.\n")
-        # print(typeof(f),"\n")
     end
-    f_t = OffsetArray(f_t,lx:rx,ly:ry)
 
-    for J=1:N^2
+    for J=1:N2
         j,k=oneIndexToTwo(J)
         f_t[j,k] = f[J]
     end
@@ -71,7 +68,6 @@ export mapZTo4Index
 #where 'j' and 'k' are for space coordinates and 'l' and 'm' are the auxillary indices for CQC.
 function mapZTo4Index(ZordZ)
 
-    #!
     if eltype(ZordZ) == Float64
             ZordZ_t = Array{Float64,4}(undef, Nx,Nx,Ny,Ny)    #"s" stands for single
         elseif eltype(ZordZ) == ComplexF64
@@ -79,12 +75,11 @@ function mapZTo4Index(ZordZ)
         else
             println("Error: given type not float or complex float.")
     end
-    #!
     # ZordZ_t = im*zeros(Nx,Nx,Ny,Ny) #t stands for "two-index" for each given index (i.e. j,k <- J)#!
     # ZordZ_t = OffsetArray(ZordZ_t,lx:rx,lx:rx,ly:ry,ly:ry)#! ***** turn this on when you remove the bottom red warning.
 
-    for J=1:N^2
-        for K=1:N^2
+    for J=1:N2
+        for K=1:N2
             j,k = oneIndexToTwo(J)
             l,m = oneIndexToTwo(K)
             #! REMOVE THIS ONCE WE ARE DONE USING 4-INDEX OMEGA'S also make sure you turn on **** above

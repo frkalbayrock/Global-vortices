@@ -1,5 +1,57 @@
 # CHANGELOG
 
+### v1.2.0 - Type Inference Reduction and Performance Update // Symmetric Decleration For Matrix Operations
+This update is all about improving the perfomance. We've tested some allocations on the workers (and on master) and we have seen it was (at least on compilation) type inference allocations were dominating it. It is unclear how to test the workers without the compilation so since the results show a lot of type inference we have tested all the functions with "@code_warntype" and fixed all the type stability issues. 
+We have also changed how the matrix operations work. Since the matrices we have at initial conditions are all symmetric we define them like that for performance improvement. This way Julia can use the faster LAPACK routines that are for symmetric matrices that reduce the number of operations.
+On top of these we have few small changes as well (like "N^2 -> N2") as explained in detail below.
+
+All the changes listed: 
+#### Auxilliary.jl:
+- All the N^2 are replaced with precomputed N2.
+- update_Paddings!() -> update_Paddings!(ϕ,ψ,Z) for consistentcy, readability and possible slight improvement even though it is not really needed.
+- Whole update_Paddings!() business slightly changed. It used to be done via "@views" and "SubArray" statements for specifying the type for type stability. Now, we changed that to "Array" statements on "getData_f()"s and we added that type specifiers also on the update_Paddings!(). 
+- The second part of the one above is actually part of a general addition. To improve type stability, we added the expected types for all the "@fetchfrom"s. Seems to be improving the type stability.
+
+#### Constrainst.jl:
+- All the N^2 are replaced with precomputed N2.
+
+#### Energy.jl:
+- ZED -> ZED_gl since now we treat that as a new field rather than defining everytime we call the energy_calculation(). This also means we changed energy_calculation() -> energy_calculation!() as now we are updating "ZED" as a field rather than "return"ing it.
+- Initialization totalE = 0 -> totalE = 0. for type stability.
+- All "@fetchfrom"s got type statements around them for type stability.
+
+#### Evolution.jl:
+- Similar updates as above ones: N^2 -> N2, update_Paddings!() -> update_Paddings!(ϕ,ψ,Z), @fetchfrom got type statements.
+- Functions that update fields only got "return nothing" at the end for type stability.
+
+#### IC.jl:
+- All the N^2 are replaced with precomputed N2.
+- Sparsity tools added. (Checking how many zeros we have in Z) We are keeping these for future testing and for adding Sparse Matrices later.
+- Biggest change we have here is the improvement of the calculation of sqrt of matrices. After we define "Ω" matrix we specify it to be a "Symmetric" matrix. Instead of using the given sqrt() for this operation we also use the manual diagonalization path to calculate the sqrt of the matrices. This way Julia knows to use the faster LAPACK routines designed for symmetric matrices for performance improvement.
+- All @fetchfrom's got type statements around them for type stability.
+- For calculating "Ω" we start with flattenning "ϕ" and "ψ". We have removed @views from those statements as we were already sending the full arrays into the function.
+
+#### IndexMap.jl:
+- In this module, some functions needed OffsetArrays but the offsettings were done after the arrays defined. Now we define directly as OffsetArrays. (when needed)
+- All the N^2 are replaced with precomputed N2.
+
+#### main.jl:
+- Leaving some testing allocation tools for later testing. 
+- "ZED" is now defined as a new field on the workers rather than defining everytime when it was needed. This should reduce unnecessary allocations.
+
+#### Parameters.jl:
+- N2 is defined from N^2 for precalculation, since this is used a lot in the code.
+
+#### tester.jl:
+- We have added a lot of test functions for "RemoteChannel" testing and learning. We have few working ones in there for implementation to the code. We'll be adding another version as  another branch with this new method. "RemoteChannel"s method should build a network of buffers like MPI method directly from Julia/Distributed for consistent networking rather than openning and closing a connection between processes everytime "@fetchfrom" is called. To be tested for performance comparison later.
+
+
+Next update for this branch will be trying to "@async" "@fetchfrom" calls for improvement. It is unknown at this stage if this is even possible. 
+
+
+
+
+
 ### v1.1.2 - Global Variables and Small Fixes Update
 The main change is that the function that determines the neighbours of the chunks is now only called once in the beginning and n_i's are now defined as global constants to avoid repeated calls every time update_Paddings() is called. 
 
