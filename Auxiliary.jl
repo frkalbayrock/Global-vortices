@@ -163,25 +163,56 @@ end
 
 #Data exchange initiator to fill paddings with updated data from neighboring blocks
 @everywhere workers() function update_Paddings!(ϕ,ψ,Z)
-        #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
-        #ϕ
-        ϕ[1:padd,             padd+1:Ny_loc+padd] .= (@fetchfrom n_left   getData_ϕ(1))::Array{ComplexF64, 2}
-        ϕ[Nx_loc+padd+1:end,  padd+1:Ny_loc+padd] .= (@fetchfrom n_right  getData_ϕ(2))::Array{ComplexF64, 2}
-        ϕ[padd+1:Nx_loc+padd, 1:padd]             .= (@fetchfrom n_bottom getData_ϕ(3))::Array{ComplexF64, 2}
-        ϕ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end]  .= (@fetchfrom n_top    getData_ϕ(4))::Array{ComplexF64, 2}
+    
+    #We @async data acquisition so we can stack up the processes from each neighbor for time saving.
+    #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
+    @sync begin
+        #Left
+        @async begin
+            left_data   = @fetchfrom n_left     getData_All(1)::@NamedTuple{ϕ::Matrix{ComplexF64}, ψ::Matrix{Float64}, Z::Array{ComplexF64, 4}}
+            ϕ[1:padd, padd+1:Ny_loc+padd]       .= left_data.ϕ
+            ψ[1:padd, padd+1:Ny_loc+padd]       .= left_data.ψ
+            Z[1:padd, :, padd+1:Ny_loc+padd, :] .= left_data.Z
+        end
 
-        #ψ
-        ψ[1:padd,             padd+1:Ny_loc+padd] .= (@fetchfrom n_left   getData_ψ(1))::Array{Float64, 2}
-        ψ[Nx_loc+padd+1:end,  padd+1:Ny_loc+padd] .= (@fetchfrom n_right  getData_ψ(2))::Array{Float64, 2}
-        ψ[padd+1:Nx_loc+padd, 1:padd]             .= (@fetchfrom n_bottom getData_ψ(3))::Array{Float64, 2}
-        ψ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end]  .= (@fetchfrom n_top    getData_ψ(4))::Array{Float64, 2}
+        #Right
+        @async begin
+            right_data  = @fetchfrom n_right   getData_All(2)::@NamedTuple{ϕ::Matrix{ComplexF64}, ψ::Matrix{Float64}, Z::Array{ComplexF64, 4}}
+            ϕ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd]       .= right_data.ϕ
+            ψ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd]       .= right_data.ψ
+            Z[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :] .= right_data.Z
+        end
 
-        #Z
-        Z[1:padd,             :, padd+1:Ny_loc+padd, :] .= (@fetchfrom n_left   getData_Z(1))::Array{ComplexF64, 4}
-        Z[Nx_loc+padd+1:end,  :, padd+1:Ny_loc+padd, :] .= (@fetchfrom n_right  getData_Z(2))::Array{ComplexF64, 4}
-        Z[padd+1:Nx_loc+padd, :, 1:padd,             :] .= (@fetchfrom n_bottom getData_Z(3))::Array{ComplexF64, 4}
-        Z[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end,  :] .= (@fetchfrom n_top    getData_Z(4))::Array{ComplexF64, 4}
+        #Bottom
+        @async begin
+            bottom_data = @fetchfrom n_bottom getData_All(3)::@NamedTuple{ϕ::Matrix{ComplexF64}, ψ::Matrix{Float64}, Z::Array{ComplexF64, 4}}
+            ϕ[padd+1:Nx_loc+padd, 1:padd]       .= bottom_data.ϕ
+            ψ[padd+1:Nx_loc+padd, 1:padd]       .= bottom_data.ψ
+            Z[padd+1:Nx_loc+padd, :, 1:padd, :] .= bottom_data.Z
+        end
+
+        #Top
+        @async begin
+            top_Data    = @fetchfrom n_top     getData_All(4)::@NamedTuple{ϕ::Matrix{ComplexF64}, ψ::Matrix{Float64}, Z::Array{ComplexF64, 4}}
+            ϕ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end]       .= top_Data.ϕ
+            ψ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end]       .= top_Data.ψ
+            Z[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :] .= top_Data.Z
+        end
+
+    end
 return nothing
+end
+
+
+
+@everywhere workers() function getData_All(neighbour::Int)
+
+    return (
+        ϕ = getData_ϕ(neighbour),
+        ψ = getData_ψ(neighbour),
+        Z = getData_Z(neighbour)
+    )
+
 end
 
 

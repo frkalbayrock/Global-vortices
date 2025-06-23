@@ -1,12 +1,25 @@
 # CHANGELOG
 
+### v1.3.0 - Upgraded Update Padding Function with Asynchronous Calls
+The update_Paddings() function is modified to work with @async to improve performance. The goal was not just to use async calls but also reduce the number of @fetchfrom calls to reduce the remote call overhead. We basically use a bigger messages to send but we do it in a single call now. 
+
+All the changes listed:
+#### Auxiliary.jl:
+- update_Paddings!() is changed to make less @fetchfrom calls. Instead of getting the data from a particular neighbor one field at a time, now we get them all at the same time as "NamedTuple". Each name in this tuple corresponds to a field. We assign to each field using ..._data.ϕ, ..._data.ψ or ..._data.Z. 
+- getData_all() function is created to handle getting all the padd data from a neighbor with one call. The collecting padd from different fields are done on the worker side now.
+And since we also @async this operation while left neighbor is preparing/collecting the data we don't wait for it to finish since @async makes sure to call the other neighbors as well. 
+
+#### main.jl:
+- BLAS thread count is manually set using the number of cores available. This is also printed on the console later with information about the run. Until now, we weren't aware of the autmatic multi-threading of the BLAS in the background. 
+
+
 ### v1.2.0 - Type Inference Reduction and Performance Update // Symmetric Decleration For Matrix Operations
 This update is all about improving the perfomance. We've tested some allocations on the workers (and on master) and we have seen it was (at least on compilation) type inference allocations were dominating it. It is unclear how to test the workers without the compilation so since the results show a lot of type inference we have tested all the functions with "@code_warntype" and fixed all the type stability issues. 
 We have also changed how the matrix operations work. Since the matrices we have at initial conditions are all symmetric we define them like that for performance improvement. This way Julia can use the faster LAPACK routines that are for symmetric matrices that reduce the number of operations.
 On top of these we have few small changes as well (like "N^2 -> N2") as explained in detail below.
 
 All the changes listed: 
-#### Auxilliary.jl:
+#### Auxiliary.jl:
 - All the N^2 are replaced with precomputed N2.
 - update_Paddings!() -> update_Paddings!(ϕ,ψ,Z) for consistentcy, readability and possible slight improvement even though it is not really needed.
 - Whole update_Paddings!() business slightly changed. It used to be done via "@views" and "SubArray" statements for specifying the type for type stability. Now, we changed that to "Array" statements on "getData_f()"s and we added that type specifiers also on the update_Paddings!(). 

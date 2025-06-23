@@ -27,6 +27,7 @@ using Printf
 using BenchmarkTools
 using Profile
 using PProf
+using LinearAlgebra
 
 
 
@@ -88,6 +89,13 @@ run(`mkdir -p data/energies`)
     end
 
 
+#---BLAS Multi-threading Control
+    BLAS.set_num_threads(prod(nprocs_perdim))
+
+
+
+
+
 
 #---Main run function
 function run_ev()
@@ -108,6 +116,7 @@ function run_ev()
     println("Time Spacing dt: ",dt)
     println("Number of time steps: ",nt)
     println("Threads: ",Threads.nthreads())#!
+    println("BLAS-Threads: ",BLAS.get_num_threads())
     println("Procs: ",nprocs())
     #Initial Data files
     ioϕ=open("data/initial_phi.dat","w")
