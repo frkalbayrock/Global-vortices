@@ -64,7 +64,7 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
         
         #--Move a time step
         @everywhere workers() half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
-        @everywhere workers() update_Paddings!(ϕ,ψ,Z)
+        update_Paddings!()
         @everywhere workers() begin
             leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,($meanSqrRenorm))
             half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,2)

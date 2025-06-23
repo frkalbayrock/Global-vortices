@@ -158,92 +158,158 @@ end
 
 
 
-#---Transfer Functions
-#   So far this is the only way it works with @fetchfrom that's why it is done not so clever way, on purpose.
+
+#This part is used initizalie the 'RemoteChannel's for data transfers.
+#This method is very similar to MPI but using only the Distributed.jl.
+#'RemoteChannel's are the references/handles of 'Channel's that can reside on any worker used to store data.
+#The following initizaliation is conducted at two steps;
+    #1-Each worker creates the receiving data channel(s) locally
+    #2-The 'RemoteChannel's/handles are exhange between neigbors.
+        #This step requires the master to coordinate the operation since
+        #@fetchfrom'ing neigbors' channels with the same name causes small problems. 
+        #(since master has no channels residing in it, this doesn't cause a problem over there)
+        #Thus, master fetches the handles and distributes to the workers who are neighbors.
+#We use a single receiving channel on each worker, where the identification of messages are done with symbols: :from_left etc.
+#All the neighbors dump data into this channel with proper tags (the symbols).
+#Then receive function sorts things out later to update the proper sites. That way we don't deal with many channels and remotecalls.
+export initialize_channels
+function initialize_channels()
+    
+    # Step 1: Each worker creates its own receive buffers locally
+    @everywhere workers() const recv_ψ = RemoteChannel(() -> Channel{Tuple{Symbol, Array{Float64,2}}}(4))
+    @everywhere workers() const recv_ϕ = RemoteChannel(() -> Channel{Tuple{Symbol, Array{ComplexF64,2}}}(4))
+    @everywhere workers() const recv_Z = RemoteChannel(() -> Channel{Tuple{Symbol, Array{ComplexF64,4}}}(4))
+    
+    # Step 2: Exchange handles (push buffer handles to neighbors who will send into them)
+    @sync for pid in workers()
+        left, right, bottom, top = find_neighbours(pid)
+
+        @async begin
+            #ψ
+            ch_ψ = @fetchfrom pid Main.recv_ψ
+            #ϕ
+            ch_ϕ = @fetchfrom pid Main.recv_ϕ
+            #Z
+            ch_Z = @fetchfrom pid Main.recv_Z
+
+            # Send these channels to left/right/bottom/top neighbors
+            remotecall_wait(left) do
+                global Main.send_ψ_right = ch_ψ
+                global Main.send_ϕ_right = ch_ϕ
+                global Main.send_Z_right = ch_Z
+            end
+            remotecall_wait(right) do
+                global Main.send_ψ_left = ch_ψ
+                global Main.send_ϕ_left = ch_ϕ
+                global Main.send_Z_left = ch_Z
+            end
+            remotecall_wait(bottom) do
+                global Main.send_ψ_top = ch_ψ
+                global Main.send_ϕ_top = ch_ϕ
+                global Main.send_Z_top = ch_Z
+            end
+            remotecall_wait(top) do
+                global Main.send_ψ_bottom = ch_ψ
+                global Main.send_ϕ_bottom = ch_ϕ
+                global Main.send_Z_bottom = ch_Z
+            end
+        end
+    end
+
+end
+
+
+
 
 #Data exchange initiator to fill paddings with updated data from neighboring blocks
-@everywhere workers() function update_Paddings!(ϕ,ψ,Z)
-        #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
-        #ϕ
-        ϕ[1:padd,             padd+1:Ny_loc+padd] .= (@fetchfrom n_left   getData_ϕ(1))::Array{ComplexF64, 2}
-        ϕ[Nx_loc+padd+1:end,  padd+1:Ny_loc+padd] .= (@fetchfrom n_right  getData_ϕ(2))::Array{ComplexF64, 2}
-        ϕ[padd+1:Nx_loc+padd, 1:padd]             .= (@fetchfrom n_bottom getData_ϕ(3))::Array{ComplexF64, 2}
-        ϕ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end]  .= (@fetchfrom n_top    getData_ϕ(4))::Array{ComplexF64, 2}
+export update_Paddings!
+function update_Paddings!()
 
-        #ψ
-        ψ[1:padd,             padd+1:Ny_loc+padd] .= (@fetchfrom n_left   getData_ψ(1))::Array{Float64, 2}
-        ψ[Nx_loc+padd+1:end,  padd+1:Ny_loc+padd] .= (@fetchfrom n_right  getData_ψ(2))::Array{Float64, 2}
-        ψ[padd+1:Nx_loc+padd, 1:padd]             .= (@fetchfrom n_bottom getData_ψ(3))::Array{Float64, 2}
-        ψ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end]  .= (@fetchfrom n_top    getData_ψ(4))::Array{Float64, 2}
+    #Send in to the buffers
+    @everywhere  workers() begin
+        Main.send_f!()
+    end 
 
-        #Z
-        Z[1:padd,             :, padd+1:Ny_loc+padd, :] .= (@fetchfrom n_left   getData_Z(1))::Array{ComplexF64, 4}
-        Z[Nx_loc+padd+1:end,  :, padd+1:Ny_loc+padd, :] .= (@fetchfrom n_right  getData_Z(2))::Array{ComplexF64, 4}
-        Z[padd+1:Nx_loc+padd, :, 1:padd,             :] .= (@fetchfrom n_bottom getData_Z(3))::Array{ComplexF64, 4}
-        Z[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end,  :] .= (@fetchfrom n_top    getData_Z(4))::Array{ComplexF64, 4}
+    #Collect from the buffers
+    @everywhere  workers() begin
+        Main.recv_f!()
+    end
+
 return nothing
 end
 
 
-# @everywhere workers() 
-# export getData_ψ
-# function getData_ψ(neighbour::Int,t::Int)
-@everywhere workers() function getData_ψ(neighbour::Int) #! for now i have to define them like this for name space issues, 
-                                                                    #! also needed "using Distributed" in this module
-                                                                    #!I wanna make Auxiliary not a module eventually.
-    #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
-    if neighbour == 1
-        return ψ[Nx_loc+1:end-padd,   padd+1:Ny_loc+padd]::Array{Float64, 2}
-    elseif neighbour == 2
-        return ψ[padd+1:padding_size, padd+1:Ny_loc+padd]::Array{Float64, 2}
-    elseif neighbour == 3
-        return ψ[padd+1:Nx_loc+padd,  Ny_loc+1:end-padd]::Array{Float64, 2}
-    elseif neighbour == 4
-        return ψ[padd+1:Nx_loc+padd,  padd+1:padding_size]::Array{Float64, 2}
-    else
-        error("Invalid neighbour index")
+
+
+#Send Functions - send the borders to paddings of the neighbors.
+@everywhere function send_f!()
+    #ψ
+    put!(send_ψ_left,   (:from_right,  ψ[padd+1:padding_size,  padd+1:Ny_loc+padd]))
+    put!(send_ψ_right,  (:from_left,   ψ[Nx_loc+1:end-padd,    padd+1:Ny_loc+padd]))
+    put!(send_ψ_bottom, (:from_top,    ψ[padd+1:Nx_loc+padd,   padd+1:padding_size]))
+    put!(send_ψ_top,    (:from_bottom, ψ[padd+1:Nx_loc+padd,   Ny_loc+1:end-padd]))
+    #ϕ
+    put!(send_ϕ_left,   (:from_right,  ϕ[padd+1:padding_size,  padd+1:Ny_loc+padd]))
+    put!(send_ϕ_right,  (:from_left,   ϕ[Nx_loc+1:end-padd,    padd+1:Ny_loc+padd]))
+    put!(send_ϕ_bottom, (:from_top,    ϕ[padd+1:Nx_loc+padd,   padd+1:padding_size]))
+    put!(send_ϕ_top,    (:from_bottom, ϕ[padd+1:Nx_loc+padd,   Ny_loc+1:end-padd]))
+    #Z
+    put!(send_Z_left,   (:from_right,  Z[padd+1:padding_size, :,  padd+1:Ny_loc+padd, :]))
+    put!(send_Z_right,  (:from_left,   Z[Nx_loc+1:end-padd,   :,  padd+1:Ny_loc+padd, :]))
+    put!(send_Z_bottom, (:from_top,    Z[padd+1:Nx_loc+padd,  :,  padd+1:padding_size,:]))
+    put!(send_Z_top,    (:from_bottom, Z[padd+1:Nx_loc+padd,  :,  Ny_loc+1:end-padd,  :]))
+end
+
+
+
+
+#Receive Functions - receive borders of the neigbors to the paddings.
+@everywhere function recv_f!()
+    # ψ
+    for _ in 1:4
+        dir, data = take!(recv_ψ)
+        if dir == :from_left
+            ψ[1:padd, padd+1:Ny_loc+padd] = data
+        elseif dir == :from_right
+            ψ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd] = data
+        elseif dir == :from_bottom
+            ψ[padd+1:Nx_loc+padd, 1:padd] = data
+        elseif dir == :from_top
+            ψ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end] = data
+        end
+    end
+
+    # ϕ
+    for _ in 1:4
+        dir, data = take!(recv_ϕ)
+        if dir == :from_left
+            ϕ[1:padd, padd+1:Ny_loc+padd] = data
+        elseif dir == :from_right
+            ϕ[Nx_loc+padd+1:end, padd+1:Ny_loc+padd] = data
+        elseif dir == :from_bottom
+            ϕ[padd+1:Nx_loc+padd, 1:padd] = data
+        elseif dir == :from_top
+            ϕ[padd+1:Nx_loc+padd, Ny_loc+padd+1:end] = data
+        end
+    end
+
+    # Z
+    for _ in 1:4
+        dir, data = take!(recv_Z)
+        if dir == :from_left
+            Z[1:padd, :, padd+1:Ny_loc+padd, :] = data
+        elseif dir == :from_right
+            Z[Nx_loc+padd+1:end, :, padd+1:Ny_loc+padd, :] = data
+        elseif dir == :from_bottom
+            Z[padd+1:Nx_loc+padd, :, 1:padd, :] = data
+        elseif dir == :from_top
+            Z[padd+1:Nx_loc+padd, :, Ny_loc+padd+1:end, :] = data
+        end
     end
 end
 
 
-# @everywhere workers() 
-# export getData_ϕ
-# function getData_ϕ(neighbour::Int,t::Int)
-@everywhere workers() function getData_ϕ(neighbour::Int)
-    #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
-    if neighbour == 1
-        return ϕ[Nx_loc+1:end-padd,   padd+1:Ny_loc+padd]::Array{ComplexF64, 2}
-    elseif neighbour == 2
-        return ϕ[padd+1:padding_size, padd+1:Ny_loc+padd]::Array{ComplexF64, 2}
-    elseif neighbour == 3
-        return ϕ[padd+1:Nx_loc+padd,  Ny_loc+1:end-padd]::Array{ComplexF64, 2}
-    elseif neighbour == 4
-        return ϕ[padd+1:Nx_loc+padd,  padd+1:padding_size]::Array{ComplexF64, 2}
-    else
-        error("Invalid neighbour index")
-    end
-end
 
 
-# @everywhere workers() 
-# export getData_Z
-# function getData_Z(neighbour::Int,t::Int)
-@everywhere workers() function getData_Z(neighbour::Int)
-    #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
-    if neighbour == 1
-        return Z[Nx_loc+1:end-padd,    :, padd+1:Ny_loc+padd,  :]::Array{ComplexF64, 4}
-    elseif neighbour == 2
-        return Z[padd+1:padding_size,  :, padd+1:Ny_loc+padd,  :]::Array{ComplexF64, 4}
-    elseif neighbour == 3
-        return Z[padd+1:Nx_loc+padd,   :, Ny_loc+1:end-padd,   :]::Array{ComplexF64, 4}
-    elseif neighbour == 4
-        return Z[padd+1:Nx_loc+padd,   :, padd+1:padding_size, :]::Array{ComplexF64, 4}
-    else
-        error("Invalid neighbour index")
-    end
-end
-
-
-#
 
 end #module

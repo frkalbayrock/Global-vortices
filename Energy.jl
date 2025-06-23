@@ -13,7 +13,7 @@ export energy!
 function energy!(ZED_gl,meanSqrRenorm,zPE)
 
     #--Update the paddings before calculating energy
-    @everywhere workers() update_Paddings!(ϕ,ψ,Z)
+    update_Paddings!()
 
     #--Calculate energy on each chunk
     @everywhere workers() totalE_loc = energy_calculation!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,ZED,($meanSqrRenorm),($zPE))

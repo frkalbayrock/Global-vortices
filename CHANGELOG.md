@@ -1,5 +1,32 @@
 # CHANGELOG
 
+
+### v6.0.0 - New Version of the code with RemoteChannels
+v6 of the code implements the RemoteChannel approach for the parallelization. It is quite similar to MPI but RemoteChannels in stdlib of Julia, thus no external package reliance. 
+This code is similar or worse in performance to the original parallel-Julia version but scales better. With more cores we get better improvement in performance but uses a lot more memory.
+If the memory issue is solved with future updates (sparse arrays etc.) maybe this version could be viable for GPU parallelization as this scales better with more core count. 
+
+All the changes listed:
+
+#### Auxiliary.jl:
+- update_Paddings!() is revised to work with channels notation. It now only calls the "send()" and "recv()" functions using @everywhere. update_Paddings!() itself is no longer a parallel function. 
+- initialize_channels(): start the channels network between workers. In short, first only the recv channels are created per worker. Then master takes the handles/RemoteChannels from each worker and send them to appropriate neighbors with proper names. Thus each worker knows which RemoteChannel is to be used for each side. SO master is used to coordinate the networking.
+- send_f!() and recv_f!() are created. send_f() put the data onto correct channels with a tag to specify where the data is coming from. recv_f() on the other side goes over each message and based on the tag assign the data to the correct location.
+ 
+#### Energy.jl:
+- The call for padd updating has changed due to the structure of the new notation: @everywhere workers() update_Paddings!(ϕ,ψ,Z) -> update_Paddings!()
+
+#### Evolution.jl:
+- The call for padd updating has changed due to the structure of the new notation: @everywhere workers() update_Paddings!(ϕ,ψ,Z) -> update_Paddings!()
+
+#### main.jl:
+- Before running run_ev() we call the initialize_channels().
+- BLAS thread count is manually set using the number of cores available. This is also printed on the console later with information about the run.
+
+
+
+
+
 ### v1.2.0 - Type Inference Reduction and Performance Update // Symmetric Decleration For Matrix Operations
 This update is all about improving the perfomance. We've tested some allocations on the workers (and on master) and we have seen it was (at least on compilation) type inference allocations were dominating it. It is unclear how to test the workers without the compilation so since the results show a lot of type inference we have tested all the functions with "@code_warntype" and fixed all the type stability issues. 
 We have also changed how the matrix operations work. Since the matrices we have at initial conditions are all symmetric we define them like that for performance improvement. This way Julia can use the faster LAPACK routines that are for symmetric matrices that reduce the number of operations.
