@@ -5,6 +5,8 @@ using .Parameters
 using Distributed
 addprocs(prod(nprocs_perdim),topology=:all_to_all,lazy=true)
 
+
+
 include("IC.jl")
 include("Energy.jl")
 include("Auxiliary.jl")
@@ -21,7 +23,6 @@ using .Constraints_Conserveds
 using .FindVortex
 using OffsetArrays
 using DelimitedFiles
-using Plots; pythonplot()
 using Printf
 # !
 using BenchmarkTools
@@ -59,20 +60,20 @@ run(`mkdir -p data/energies`)
 
     #Initilize the Global Lattice Arrays
     b = @allocated begin #!we keep these now until we finish the testing
-    const ϕ_gl = OffsetArray(im*zeros(Nx, Ny),lx:rx,ly:ry)
-    const ψ_gl = OffsetArray(zeros(Nx, Ny),lx:rx,ly:ry)
-    const ZED_gl = OffsetArray(zeros(Nx,Ny),lx:rx,ly:ry)
+    const ϕ_gl = OffsetArray(zeros(ComplexF64, Nx, Ny),lx:rx,ly:ry)
+    const ψ_gl = OffsetArray(zeros(Float64, Nx, Ny),lx:rx,ly:ry)
+    const ZED_gl = OffsetArray(zeros(Float64, Nx,Ny),lx:rx,ly:ry)
     end
     println("Allocated: ",b/1e6," MB")
 
     #Initilize the Local Chunk Field Arrays
         #Standards:  ϕ and ψ are in 2D lattice // Z can be on the flattened 1D N^2 lattice or native 2D lattice
     @everywhere workers() begin
-        const ϕ =    im*zeros(Nx_loc+padding_size, Ny_loc+padding_size)
-        const ψ =       zeros(Nx_loc+padding_size, Ny_loc+padding_size)
-        const dϕdt = im*zeros(Nx_loc, Ny_loc, 2)
-        const dψdt =    zeros(Nx_loc, Ny_loc, 2)
-        const ZED  =    zeros(Nx_loc, Ny_loc)
+        const ϕ =    zeros(ComplexF64, Nx_loc+padding_size, Ny_loc+padding_size)
+        const ψ =    zeros(Nx_loc+padding_size, Ny_loc+padding_size)
+        const dϕdt = zeros(ComplexF64, Nx_loc, Ny_loc, 2)
+        const dψdt = zeros(Nx_loc, Ny_loc, 2)
+        const ZED  = zeros(Nx_loc, Ny_loc)
         #2-index Z
         # Z =    Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
         # dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2)

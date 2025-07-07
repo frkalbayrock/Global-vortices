@@ -1,5 +1,30 @@
 # CHANGELOG
 
+### v1.4.0 - Memory Issue Fixed 
+The problem of usage of immense amounts of memory was related to accidently sending full sqrt(Ω) arrays into workers and chunking them at the workers. This full array copying also meant memory usage increases with number of workers. This updates fixes that. (We might still have some work to do to improve memory usage;  we fixed th emain issue but maybe we can find more improvements)
+
+All the changes listed:
+#### Evolution.jl:
+- Some unnecessary packages are no longer loaded. 
+- Macro is fixed for future testing. It was written for a serial code with time coordinate on the fields. That is now fixed.
+- Vectorized half_step!() is commented out and the for-loop-version is now online as we observe better memory usage. And both version are updated/simplified for better readability.
+- ϕ_flux and ψ_flux are now stored in a namedtuple with names ϕ and ψ and called with flux.ϕ and flux.ψ.
+- Z_flux is returned explicitly flux_Z()
+
+
+#### IC.jl:
+- Some unnecessary packages are no longer loaded.
+-  We added the expected types for the "@fetchfrom" of global ϕ and ψ. (Looks like it was skipped the last update)
+- Chunking Z is overhauled. Before, we were setting Z on workers with interpolating inv_S_Ωzero_f and S_Ωzero_f which caused copying the whole matrices onto the workers. This was the main reason why we were using a lot of memory. Now we make sure to chunk on the master and then send them to the workers. 
+- The inversion operation of the Ω is now done manually rather than using the inverse() function.
+
+
+#### main.jl:
+- All the ComplexF64 arrays are now defined with zeros(Complexf64,Nx,Ny) rather than creating with zeros and then muptilying with imaginary "i".
+
+Next step is to check the allocations and memory usage for the multuple evolution steps.
+
+
 ### v1.3.0 - Upgraded Update Padding Function with Asynchronous Calls
 The update_Paddings() function is modified to work with @async to improve performance. The goal was not just to use async calls but also reduce the number of @fetchfrom calls to reduce the remote call overhead. We basically use a bigger messages to send but we do it in a single call now. 
 
