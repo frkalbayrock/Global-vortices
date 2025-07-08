@@ -6,8 +6,8 @@ export λ,α,β,η,m_ρ,m_ϕ,m_ψ
 const N=20
 const Nx=N
 const Ny=N
-const lx=Int16.(-Nx/2+1)
-const rx=Int16.(Nx/2)
+const lx=Int(-Nx/2+1)
+const rx=Int(Nx/2)
 const ly=lx
 const ry=rx
 const dx=0.4
@@ -18,8 +18,8 @@ const nt=2000
 
 #--Couplings and Masses #!TO BE FINE_TUNED
 const λ=1
-const α=1
-const β=1
+const α=0.5
+const β=0.5
 const η=1
 const m_ρ=1
 const m_ϕ=sqrt(λ*η^2)

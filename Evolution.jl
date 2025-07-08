@@ -15,23 +15,23 @@ using PProf
 using JLD2
 
 
-macro ϕflux() esc(:(( (ϕ[nnr_x,k,1] - 2ϕ[j,k,1] + ϕ[nnl_x,k,1])/dx^2 
-                    + (ϕ[j,nnr_y,1] - 2ϕ[j,k,1] + ϕ[j,nnl_y,1])/dy^2 
-                    + ( m_ϕ^2 - α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[j,k,1]) ) * ϕ[j,k,1] )))
+macro ϕflux() esc(:(( (ϕ[nnr_x,k] - 2ϕ[j,k] + ϕ[nnl_x,k])/dx^2 
+                    + (ϕ[j,nnr_y] - 2ϕ[j,k] + ϕ[j,nnl_y])/dy^2 
+                    + ( m_ϕ^2 - α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[j,k]) ) * ϕ[j,k] )))
 end
-macro ψflux() esc(:(( (ψ[nnr_x,k,1] - 2ψ[j,k,1] + ψ[nnl_x,k,1])/dx^2 
-                    + (ψ[j,nnr_y,1] - 2ψ[j,k,1] + ψ[j,nnl_y,1])/dy^2 
-                    - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k,1] )))
+macro ψflux() esc(:(( (ψ[nnr_x,k] - 2ψ[j,k] + ψ[nnl_x,k])/dx^2 
+                    + (ψ[j,nnr_y] - 2ψ[j,k] + ψ[j,nnl_y])/dy^2 
+                    - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k] )))
 end
-macro Zflux() esc(:(( (Z[nnr_x,l,k,m,1] - 2Z[j,l,k,m,1] + Z[nnl_x,l,k,m,1])/dx^2 
-                    + (Z[j,l,nnr_y,m,1] - 2Z[j,l,k,m,1] + Z[j,l,nnl_y,m,1])/dy^2
-                    - ( m_ρ^2 + α*abs2(ϕ[j,k,1]) + β*ψ[j,k,1]^2 ) * Z[j,l,k,m,1] )))
+macro Zflux() esc(:(( (Z[nnr_x,l,k,m] - 2Z[j,l,k,m] + Z[nnl_x,l,k,m])/dx^2 
+                    + (Z[j,l,nnr_y,m] - 2Z[j,l,k,m] + Z[j,l,nnl_y,m])/dy^2
+                    - ( m_ρ^2 + α*abs2(ϕ[j,k]) + β*ψ[j,k]^2 ) * Z[j,l,k,m] )))
 end
 
 
 # 4-index Notation (Leap-frog)
     export time_evolve!
-    function time_evolve!(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t,meanSqrRenorm,zPE)
+    function time_evolve!(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t,ZED,meanSqrRenorm,zPE)
 
         # Z_t = Array{ComplexF64,5}(undef, Nx,Nx,Ny,Ny,2) #This way seems to be faster and memory friendly for complex arrays. 
         # dZdt_t = Array{ComplexF64,5}(undef, Nx,Nx,Ny,Ny,2)
@@ -71,25 +71,24 @@ end
             updateForNextStep(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t)
 
             # #!map z back to 2 index for printing easy matrix notation
-            # Z[:,:,1] .= @views mapZTo2Index(Z_t[:,:,:,:,0])
+            # Z .= mapZTo2Index(Z_t)
             # dZdt[:,:,1] .= @views mapZTo2Index(dZdt_t[:,:,:,:,0])
 
             # Take a snap
             if mod(t,snapInterval) == 0
 
-                # totalE,ZED = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm,zPE)
-                totalE,ZED = energy(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t,meanSqrRenorm,zPE)
+                totalE = energy(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t,ZED,meanSqrRenorm,zPE)
                 ZED_t = ravelDimension(ZED) #!unnecessary temp array.
 
-                writedlm(ϕdataIO, ϕ[:,:,0])
-                writedlm(ψdataIO, ψ[:,:,0])
+                writedlm(ϕdataIO, ϕ[:,:])
+                writedlm(ψdataIO, ψ[:,:])
                 writedlm(energyIO,totalE)
                 writedlm(ZedIO,ZED_t)
         
                 #!
                 #check constraints
-                # @views constraints_checker(Z[:,:,1],dZdt[:,:,1])
-                # @views conserved_checker(Z[:,:,1],dZdt[:,:,1])
+                # @views constraints_checker(Z[:,:],dZdt[:,:,1])
+                # @views conserved_checker(Z[:,:],dZdt[:,:,1])
             end
         end
     end
@@ -99,72 +98,72 @@ end
         dt_half =dt/2   #!not sure yet if i wanna keep them. harder to read.
         # for j=lx:rx
         #     for k=ly:ry
-        #         ϕ[j,k,1] = ϕ[j,k,t] + dt_half*( dϕdt[j,k,t] ) 
-        #         ψ[j,k,1] = ψ[j,k,t] + dt_half*( dψdt[j,k,t] )
+        #         ϕ[j,k] = ϕ[j,k] + dt_half*( dϕdt[j,k,t] ) 
+        #         ψ[j,k] = ψ[j,k] + dt_half*( dψdt[j,k,t] )
         #         for l=lx:rx
         #             for m=ly:ry
-        #                 Z[j,l,k,m,1] = Z[j,l,k,m,t] + dt_half*( dZdt[j,l,k,m,t] )
+        #                 Z[j,l,k,m] = Z[j,l,k,m] + dt_half*( dZdt[j,l,k,m,t] )
         #             end
         #         end
         #     end
         # end
 
         @views begin
-            ϕ[:,:,1] .= ϕ[:,:,t] .+ dt_half.*( dϕdt[:,:,t] )
-            ψ[:,:,1] .= ψ[:,:,t] .+ dt_half.*( dψdt[:,:,t] )
-            Z[:,:,:,:,1] .= Z[:,:,:,:,t] .+ dt_half.*( dZdt[:,:,:,:,t] )
+            @. ϕ[:,:]     += dt_half*( dϕdt[:,:,t] )
+            @. ψ[:,:]     += dt_half*( dψdt[:,:,t] )
+            @. Z[:,:,:,:] += dt_half*( dZdt[:,:,:,:,t] )
         end
 
     end
 
 
-    # #!Inline
-    # function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
-
-    #     for j=lx:rx
-    #         for k=ly:ry
-    #             #PBC
-    #             nnl_x, nnr_x, nnl_y, nnr_y = pbc2D(j,k)
-    #             #Calculate fluxes for ϕ and ψ
-    #             @inline @views ϕ_flux , ψ_flux = fluxes_ϕ_ψ(ϕ[:,:,1],ψ[:,:,1],Z[:,:,:,:,1],meanSqrRenorm,j,k,nnl_x,nnr_x,nnl_y,nnr_y)
-    #             dϕdt[j,k,1] = dϕdt[j,k,0] + dt*( ϕ_flux )
-    #             dψdt[j,k,1] = dψdt[j,k,0] + dt*( ψ_flux )
-    #             for l=lx:rx
-    #                 for m=ly:ry
-    #                     # @views Z_flux = flux_Z(ϕ[j,k,1],ψ[j,k,1],Z[:,l,:,m,1],j,k,nnl_x,nnr_x,nnl_y,nnr_y)
-    #                     @inline Z_flux = flux_Z(ϕ,ψ,Z,j,l,k,m,nnl_x,nnr_x,nnl_y,nnr_y)
-    #                     dZdt[j,l,k,m,1] = dZdt[j,l,k,m,0] + dt*( Z_flux )
-    #                 end
-    #             end
-    #         end
-    #     end
-
-    # end
-
-
-    #!Macro
+    #!Inline
     function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
 
         for j=lx:rx
             for k=ly:ry
                 #PBC
                 nnl_x, nnr_x, nnl_y, nnr_y = pbc2D(j,k)
-                meanSqr_Rho = @views sum(abs2, Z[j,:,k,:,1]) #!
                 #Calculate fluxes for ϕ and ψ
-                # @inline @views ψ_flux = fluxes_ϕ_ψ(ϕ[:,:,1],ψ[:,:,1],Z[:,:,:,:,1],meanSqrRenorm,j,k,nnl_x,nnr_x,nnl_y,nnr_y)
-                dϕdt[j,k,1] = dϕdt[j,k,0] + dt*( @ϕflux() )
-                dψdt[j,k,1] = dψdt[j,k,0] + dt*( @ψflux() )
+                @inline flux = fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k,nnl_x,nnr_x,nnl_y,nnr_y)
+                dϕdt[j,k,1] = dϕdt[j,k,0] + dt*( flux.ϕ )
+                dψdt[j,k,1] = dψdt[j,k,0] + dt*( flux.ψ )
                 for l=lx:rx
                     for m=ly:ry
                         # @views Z_flux = flux_Z(ϕ[j,k,1],ψ[j,k,1],Z[:,l,:,m,1],j,k,nnl_x,nnr_x,nnl_y,nnr_y)
-                        # @inline Z_flux = flux_Z(ϕ,ψ,Z,j,l,k,m,nnl_x,nnr_x,nnl_y,nnr_y)
-                        dZdt[j,l,k,m,1] = dZdt[j,l,k,m,0] + dt*( @Zflux() )
+                        @inline Z_flux = flux_Z(ϕ,ψ,Z,j,l,k,m,nnl_x,nnr_x,nnl_y,nnr_y)
+                        dZdt[j,l,k,m,1] = dZdt[j,l,k,m,0] + dt*( Z_flux )
                     end
                 end
             end
         end
 
     end
+
+
+    # #!Macro
+    # function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
+
+    #     for j=lx:rx
+    #         for k=ly:ry
+    #             #PBC
+    #             nnl_x, nnr_x, nnl_y, nnr_y = pbc2D(j,k)
+    #             meanSqr_Rho = @views sum(abs2, Z[j,:,k,:,1]) #!
+    #             #Calculate fluxes for ϕ and ψ
+    #             # @inline @views ψ_flux = fluxes_ϕ_ψ(ϕ[:,:,1],ψ[:,:,1],Z[:,:,:,:,1],meanSqrRenorm,j,k,nnl_x,nnr_x,nnl_y,nnr_y)
+    #             dϕdt[j,k,1] = dϕdt[j,k,0] + dt*( @ϕflux() )
+    #             dψdt[j,k,1] = dψdt[j,k,0] + dt*( @ψflux() )
+    #             for l=lx:rx
+    #                 for m=ly:ry
+    #                     # @views Z_flux = flux_Z(ϕ[j,k,1],ψ[j,k,1],Z[:,l,:,m,1],j,k,nnl_x,nnr_x,nnl_y,nnr_y)
+    #                     # @inline Z_flux = flux_Z(ϕ,ψ,Z,j,l,k,m,nnl_x,nnr_x,nnl_y,nnr_y)
+    #                     dZdt[j,l,k,m,1] = dZdt[j,l,k,m,0] + dt*( @Zflux() )
+    #                 end
+    #             end
+    #         end
+    #     end
+
+    # end
 
 
     @inline function fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k,nnl_x,nnr_x,nnl_y,nnr_y)
@@ -176,20 +175,18 @@ end
         ψ_flux = ( (ψ[nnr_x,k] - 2ψ[j,k] + ψ[nnl_x,k])/dx^2 + (ψ[j,nnr_y] - 2ψ[j,k] + ψ[j,nnl_y])/dy^2 
                 - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k] )
 
-    return ϕ_flux ,ψ_flux
+    return (ϕ = ϕ_flux, ψ = ψ_flux)
     end
 
     @inline function flux_Z(ϕ,ψ,Z,j,l,k,m,nnl_x,nnr_x,nnl_y,nnr_y)
-        Z_flux = ( (Z[nnr_x,l,k,m,1] - 2Z[j,l,k,m,1] + Z[nnl_x,l,k,m,1])/dx^2 
-                 + (Z[j,l,nnr_y,m,1] - 2Z[j,l,k,m,1] + Z[j,l,nnl_y,m,1])/dy^2
-                 - ( m_ρ^2 + α*abs2(ϕ[j,k,1]) + β*ψ[j,k,1]^2 ) * Z[j,l,k,m,1] )
+        Z_flux = ( (Z[nnr_x,l,k,m] - 2Z[j,l,k,m] + Z[nnl_x,l,k,m])/dx^2 
+                 + (Z[j,l,nnr_y,m] - 2Z[j,l,k,m] + Z[j,l,nnl_y,m])/dy^2
+                 - ( m_ρ^2 + α*abs2(ϕ[j,k]) + β*ψ[j,k]^2 ) * Z[j,l,k,m] )
+    return Z_flux
     end
 
     function updateForNextStep(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
         @views begin
-            ϕ[:,:,0] .= ϕ[:,:,1]
-            ψ[:,:,0] .= ψ[:,:,1]
-            Z[:,:,:,:,0] .= Z[:,:,:,:,1]
             dϕdt[:,:,0] .= dϕdt[:,:,1]
             dψdt[:,:,0] .= dψdt[:,:,1]
             dZdt[:,:,:,:,0] .= dZdt[:,:,:,:,1]

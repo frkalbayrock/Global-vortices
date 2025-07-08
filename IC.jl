@@ -34,9 +34,9 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
                 y=k*dy
                 y1 = y-r0
                 y2 = y+r0
-                ϕ[j,k,0] = η 
+                ϕ[j,k] = η 
                 dϕdt[j,k,0] = 0.
-                ψ[j,k,0] = amp*(exp( -width/(vx^2 + vy^2)
+                ψ[j,k] = amp*(exp( -width/(vx^2 + vy^2)
                                     * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )
                             + exp( -width/(vx^2 + vy^2) 
                                     * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
@@ -48,15 +48,15 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
         end
 
         #2-index to 1-index mapping
-        ϕ_s = @views flattenDimension(ϕ[:,:,0])
-        ψ_s = @views flattenDimension(ψ[:,:,0])
+        ϕ_s = flattenDimension(ϕ)
+        ψ_s = flattenDimension(ψ)
         #Get Sqrt(Omega) and its inverse matrices
         S_Ωzero, inv_S_Ωzero = omegaIC(ϕ_s,ψ_s)
 
         #Z (ρ) i.c.
         for J=1:N^2
             for K=1:N^2
-                Z[J,K,1]=-im/sqrt(2) * inv_S_Ωzero[J,K]
+                Z[J,K]=-im/sqrt(2) * inv_S_Ωzero[J,K]
                 dZdt[J,K,1] = 1/sqrt(2) * S_Ωzero[J,K]
             end
         end
@@ -67,7 +67,7 @@ function initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
         # S_Ωzero_f = mapZTo4Index(S_Ωzero)
         # inv_S_Ωzero_f =mapZTo4Index(inv_S_Ωzero)
         #     #Z (ρ) i.c.
-        #     @views Z[:,:,:,:,0] .= -im/sqrt(2) .* inv_S_Ωzero_f
+        #     @views Z[:,:,:,:] .= -im/sqrt(2) .* inv_S_Ωzero_f
         #     @views dZdt[:,:,:,:,0].= 1/sqrt(2) .* S_Ωzero_f
         # #!
 
@@ -201,10 +201,10 @@ export renormalization
 function renormalization(Z)
     meanSqrRenorm = 0
     for K=1:N^2
-        meanSqrRenorm = meanSqrRenorm + abs2(Z[N^2,K,1]) #There is an overall factor of 1/(dx*dy) which we omit here;
+        meanSqrRenorm = meanSqrRenorm + abs2(Z[N^2,K]) #There is an overall factor of 1/(dx*dy) which we omit here;
     end                                                  #It is added wherever we use this two-point function
 
-    meanSqrRenorm_v2 = sum(abs2,Z[N^2,:,1])#!
+    meanSqrRenorm_v2 = sum(abs2,Z[N^2,:])#!
     println(meanSqrRenorm)#!
     println(meanSqrRenorm_v2)#!
     return meanSqrRenorm
@@ -218,8 +218,8 @@ function zeroPointEnergy(Z,dZdt)
     pEZRen = 0.
     for K=1:N^2
         kEZRen = kEZRen + ( abs2( dZdt[N^2,K,1] ) )/2
-        gEZRen = gEZRen + ( abs2( (Z[N^2,K,1] - Z[N^2-N,K,1])/dx ) 
-                          + abs2( (Z[N^2,K,1] - Z[N^2-1,K,1])/dy ) )/2
+        gEZRen = gEZRen + ( abs2( (Z[N^2,K] - Z[N^2-N,K])/dx ) 
+                          + abs2( (Z[N^2,K] - Z[N^2-1,K])/dy ) )/2
         pEZRen = pEZRen + m_ρ^2*( abs2(Z[N^2,K,1]) )/2
         # #!
         # kEZRen = kEZRen + ( abs2( dZdtREN[K] ) )/2

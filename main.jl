@@ -33,24 +33,23 @@ function run_ev()
 
     #--Initilize the Field Arrays and
     #Standards:  ϕ and ψ are in 2D lattice // Z is flattened 1D N^2 lattice (for now)
-    ϕ = im*zeros(Nx,Ny,2)
-    ψ = zeros(Nx,Ny,2)
-    dϕdt = im*zeros(Nx,Ny,2)
-    dψdt = zeros(Nx,Ny,2)
+    #-Offset arrays for the symmetric lattice coordinates (for more natural physical indexing)
+    ϕ = OffsetArray(zeros(ComplexF64, Nx,Ny),lx:rx,ly:ry)
+    ψ = OffsetArray(zeros(Float64, Nx,Ny),lx:rx,ly:ry)
+    dϕdt = OffsetArray(zeros(ComplexF64, Nx,Ny,2),lx:rx,ly:ry,0:1)
+    dψdt = OffsetArray(zeros(Float64, Nx,Ny,2),lx:rx,ly:ry,0:1)
+    ZED = OffsetArray(zeros(Float64, Nx,Ny),lx:rx,ly:ry)
     #2-index Z
-    Z = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
+    Z = Array{ComplexF64,2}(undef, Nx^2,Ny^2) #This way seems to be faster and memory friendely for very large complex arrays. 
     dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays.
-    # #4-index Z
-    Z_t    = Array{ComplexF64,5}(undef, Nx, Nx, Ny, Ny, 2)
+    #4-index Z
+    Z_t    = Array{ComplexF64,4}(undef, Nx, Nx, Ny, Ny)
     dZdt_t = Array{ComplexF64,5}(undef, Nx, Nx, Ny, Ny, 2)
-    Z_t    = OffsetArray(Z_t,lx:rx,lx:rx,ly:ry,ly:ry,0:1)     
+    Z_t    = OffsetArray(Z_t,lx:rx,lx:rx,ly:ry,ly:ry)     
     dZdt_t   = OffsetArray(dZdt_t,lx:rx,lx:rx,ly:ry,ly:ry,0:1)
 
-    #-Offset arrays for the symmetric lattice coordinates (for more natural physical indexing)
-    ϕ = OffsetArray(ϕ,lx:rx,ly:ry,0:1)
-    ψ = OffsetArray(ψ,lx:rx,ly:ry,0:1)
-    dϕdt = OffsetArray(dϕdt,lx:rx,ly:ry,0:1)
-    dψdt = OffsetArray(dψdt,lx:rx,ly:ry,0:1)
+    
+
 
 
     #--Information about the run
@@ -79,8 +78,8 @@ function run_ev()
     initialConditions!(ϕ,ψ,Z,dϕdt,dψdt,dZdt)
 
     #Record initial conditions
-    writedlm(ioϕ,ϕ[:,:,0])
-    writedlm(ioψ,ψ[:,:,0])
+    writedlm(ioϕ,ϕ[:,:])
+    writedlm(ioψ,ψ[:,:])
 
     #!
     # #Check constraints and conserved quantities
@@ -92,13 +91,13 @@ function run_ev()
     zPE = zeroPointEnergy(Z,dZdt)
 
     #----Initial Energy----#
-    Z_t[:,:,:,:,0] .= mapZTo4Index(Z[:,:,1])
+    Z_t[:,:,:,:] .= mapZTo4Index(Z[:,:])
     dZdt_t[:,:,:,:,0] = mapZTo4Index(dZdt[:,:,1])
-    totalE, ZED = energy(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t,meanSqrRenorm,zPE)
+    totalE = energy(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t,ZED,meanSqrRenorm,zPE)
     println("Total initial energy: ", totalE)
 
     #----Time Evolution----#
-    @time time_evolve!(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t,meanSqrRenorm,zPE)
+    @time time_evolve!(ϕ,ψ,Z_t,dϕdt,dψdt,dZdt_t,ZED,meanSqrRenorm,zPE)
 
 
 
