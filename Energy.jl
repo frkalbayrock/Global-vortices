@@ -6,8 +6,8 @@ using .Parameters
 include("Auxiliary.jl")
 using .Auxiliary_Routines
 using OffsetArrays
-#!
-@everywhere using Profile, PProf
+
+
 
 export energy!
 function energy!(ZED_gl,meanSqrRenorm,zPE)

@@ -10,8 +10,7 @@ using .Auxiliary_Routines
 using Distributed
 
 
-#!
-@everywhere using InteractiveUtils
+
 
 #------------------------------------------------------------------------------------------------#
 #initialConditions sets the initial conditions for the fields ϕ,ψ,Z and calculates the renormalization factor

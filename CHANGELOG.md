@@ -1,7 +1,37 @@
 # CHANGELOG
 
+
+### v1.5.0 - Vectorization for Speed
+We found a way to vectorize the leap_forward() function for time evolution. This gave a huge increase in performance especially for larger lattices. The implentation and tests are done on both small and really large (cluster size) lattices. 
+
+All the changes listed:
+#### Energy.jl:
+- Unncessary packages loaded for this module were removed. (Profile and Pprof) These can be added if needed for testing but they need to be removed when the testing is done since they increase the memory usage significantly.
+
+#### IC.jl:
+- Unncessary packages loaded for this module were removed. (InteractiveUtils) These can be added if needed for testing but they need to be removed when the testing is done since they increase the memory usage significantly.
+
+#### Evolution.jl:
+- Macro version of leap_forward and the accompanying macros were removed and moved to the bottom (commented out) in the case of a need of future referral.
+- Half_step vectorized version is the active version now. The looped version was moved to the bottom (commented out) in the case of a need for a future referral.
+- New vectorized version of leap_forward is added along with the accompanying flux functions. j and k defined as the ranges used in these functions (this is needed since we are working with padded arrays --need to refer to the bulk) for easy reading. 
+- In flux_Z!() since the ϕ and ψ arrays are defined as 2D arrays and this vectorization requires all the arrays to be the same size, we define the 4D array M which involves reshaping ϕ and ψ calculation into 4D arrays. This now can be used in a vectorized calculation with 4D Z array.
+- Old original looped version of leap_forward is moved to the bottom (commented out) in the case of a need of future referral.
+
+
+#### main.jl:
+- Some @allocated check are removed since we are done with testing.
+- For the purpose of fully vectorized time evolution we require the fluxes to be arrays too since, they are used in calculations mixed with arrays. For that purpose we define flux and meanSqrRho as arrays that are const and preallocated in the beginning.
+
+
+Hopefully we won't need a next step as the cluster tests show promising performance. The only way I can think of improving is maybe the newly added vectorized functions which I don't plan on working on them extensively. We now focus on the testing the physics!
+
+
+
+
+
 ### v1.4.0 - Memory Issue Fixed 
-The problem of usage of immense amounts of memory was related to accidently sending full sqrt(Ω) arrays into workers and chunking them at the workers. This full array copying also meant memory usage increases with number of workers. This updates fixes that. (We might still have some work to do to improve memory usage;  we fixed th emain issue but maybe we can find more improvements)
+The problem of usage of immense amounts of memory was related to accidently sending full sqrt(Ω) arrays into workers and chunking them at the workers. This full array copying also meant memory usage increases with number of workers. This update fixes that. (We might still have some work to do to improve memory usage;  we fixed the main issue but maybe we can find more improvements)
 
 All the changes listed:
 #### Evolution.jl:
@@ -22,7 +52,7 @@ All the changes listed:
 #### main.jl:
 - All the ComplexF64 arrays are now defined with zeros(Complexf64,Nx,Ny) rather than creating with zeros and then muptilying with imaginary "i".
 
-Next step is to check the allocations and memory usage for the multuple evolution steps.
+Next step is to check the allocations and memory usage for the multiple evolution steps.
 
 
 ### v1.3.0 - Upgraded Update Padding Function with Asynchronous Calls

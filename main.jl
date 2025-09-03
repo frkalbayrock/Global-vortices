@@ -59,12 +59,9 @@ run(`mkdir -p data/energies`)
 #---Initialize the field arrays
 
     #Initilize the Global Lattice Arrays
-    b = @allocated begin #!we keep these now until we finish the testing
     const ϕ_gl = OffsetArray(zeros(ComplexF64, Nx, Ny),lx:rx,ly:ry)
     const ψ_gl = OffsetArray(zeros(Float64, Nx, Ny),lx:rx,ly:ry)
     const ZED_gl = OffsetArray(zeros(Float64, Nx,Ny),lx:rx,ly:ry)
-    end
-    println("Allocated: ",b/1e6," MB")
 
     #Initilize the Local Chunk Field Arrays
         #Standards:  ϕ and ψ are in 2D lattice // Z can be on the flattened 1D N^2 lattice or native 2D lattice
@@ -80,6 +77,11 @@ run(`mkdir -p data/energies`)
         #4-index Z
         const Z =    Array{ComplexF64,4}(undef, Nx_loc+padding_size, Nx, Ny_loc+padding_size, Ny)
         const dZdt = Array{ComplexF64,5}(undef, Nx_loc, Nx, Ny_loc, Ny, 2)
+        #Flux fields for vectorized time evolution
+        const ϕ_flux = Array{Float64,2}(undef, Nx_loc, Ny_loc)
+        const ψ_flux = Array{Float64,2}(undef, Nx_loc, Ny_loc)
+        const Z_flux = Array{ComplexF64,4}(undef, Nx_loc, Nx, Ny_loc, Ny)
+        const meanSqr_Rho = Array{Float64,2}(undef, Nx_loc, Ny_loc)
     end
 
 
@@ -174,7 +176,7 @@ end
 @time run_ev()
 #!
 # Profile.Allocs.@profile sample_rate=0.01 begin
-#     run_ev()
+    # run_ev()
 # end
 # PProf.Allocs.pprof(from_c=false)
 #!
