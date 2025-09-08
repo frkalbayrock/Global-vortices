@@ -5,6 +5,8 @@ using .Parameters
 using Distributed
 addprocs(prod(nprocs_perdim),topology=:all_to_all,lazy=true)
 
+
+
 include("IC.jl")
 include("Energy.jl")
 include("Auxiliary.jl")
@@ -21,7 +23,6 @@ using .Constraints_Conserveds
 using .FindVortex
 using OffsetArrays
 using DelimitedFiles
-using Plots; pythonplot()
 using Printf
 # !
 using BenchmarkTools
@@ -58,25 +59,29 @@ run(`mkdir -p data/energies`)
 #---Initialize the field arrays
 
     #Initilize the Global Lattice Arrays
-    const ϕ_gl = OffsetArray(im*zeros(Nx, Ny),lx:rx,ly:ry)
-    const ψ_gl = OffsetArray(zeros(Nx, Ny),lx:rx,ly:ry)
-    const ZED_gl = OffsetArray(zeros(Nx,Ny),lx:rx,ly:ry)
-
+    const ϕ_gl = OffsetArray(zeros(ComplexF64, Nx, Ny),lx:rx,ly:ry)
+    const ψ_gl = OffsetArray(zeros(Float64, Nx, Ny),lx:rx,ly:ry)
+    const ZED_gl = OffsetArray(zeros(Float64, Nx,Ny),lx:rx,ly:ry)
 
     #Initilize the Local Chunk Field Arrays
         #Standards:  ϕ and ψ are in 2D lattice // Z can be on the flattened 1D N^2 lattice or native 2D lattice
     @everywhere workers() begin
-        const ϕ =    im*zeros(Nx_loc+padding_size, Ny_loc+padding_size)
-        const ψ =       zeros(Nx_loc+padding_size, Ny_loc+padding_size)
-        const dϕdt = im*zeros(Nx_loc, Ny_loc, 2)
-        const dψdt =    zeros(Nx_loc, Ny_loc, 2)
-        const ZED  =    zeros(Nx_loc, Ny_loc)
+        const ϕ =    zeros(ComplexF64, Nx_loc+padding_size, Ny_loc+padding_size)
+        const ψ =    zeros(Nx_loc+padding_size, Ny_loc+padding_size)
+        const dϕdt = zeros(ComplexF64, Nx_loc, Ny_loc, 2)
+        const dψdt = zeros(Nx_loc, Ny_loc, 2)
+        const ZED  = zeros(Nx_loc, Ny_loc)
         #2-index Z
         # Z =    Array{ComplexF64,3}(undef, Nx^2,Ny^2,2) #This way seems to be faster and memory friendely for very large complex arrays. 
         # dZdt = Array{ComplexF64,3}(undef, Nx^2,Ny^2,2)
         #4-index Z
         const Z =    Array{ComplexF64,4}(undef, Nx_loc+padding_size, Nx, Ny_loc+padding_size, Ny)
         const dZdt = Array{ComplexF64,5}(undef, Nx_loc, Nx, Ny_loc, Ny, 2)
+        #Flux fields for vectorized time evolution
+        const ϕ_flux = Array{Float64,2}(undef, Nx_loc, Ny_loc)
+        const ψ_flux = Array{Float64,2}(undef, Nx_loc, Ny_loc)
+        const Z_flux = Array{ComplexF64,4}(undef, Nx_loc, Nx, Ny_loc, Ny)
+        const meanSqr_Rho = Array{Float64,2}(undef, Nx_loc, Ny_loc)
     end
 
 
@@ -93,6 +98,9 @@ run(`mkdir -p data/energies`)
 
 #---BLAS Multi-threading Control
     BLAS.set_num_threads(prod(nprocs_perdim))
+
+
+
 
 
 
@@ -117,7 +125,6 @@ function run_ev()
     println("Threads: ",Threads.nthreads())#!
     println("BLAS-Threads: ",BLAS.get_num_threads())
     println("Procs: ",nprocs())
-
     #Initial Data files
     ioϕ=open("data/initial_phi.dat","w")
     ioψ=open("data/initial_psi.dat","w")
@@ -133,7 +140,6 @@ function run_ev()
     writedlm(ioψ,ψ_gl[:,:])
 
 
-
     # #!Turn on if you wanna check constraints - skipping for now
     # @views Z_t = mapZTo2Index(Z_gl[:,:,:,:])
     # @views dZdt_t = mapZTo2Index(dZdt_gl[:,:,:,:])
@@ -141,11 +147,9 @@ function run_ev()
     # @views conserved_checker(Z_t[:,:],dZdt_t[:,:])
 
 
-
     #----Renormalization----#
     meanSqrRenorm = renormalization()
     zPE = zeroPointEnergy()
-
 
 
     #----Initial Energy----#
@@ -163,12 +167,11 @@ function run_ev()
     #----Check for Vortices----#
     vortex_pos, anti_vortex_pos = vortex_finder(ϕ_gl)   #!this may not be necessary.
  
-
-
     #Close data files
     close(ioϕ)
     close(ioψ)
     close(ioZed)
+
 end 
 
 @time run_ev()

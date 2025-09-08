@@ -1,5 +1,7 @@
 # CHANGELOG
 
+### v6.1.0 - Bringing all the updates from parallel-Julia
+We update all the code with the latest updates on everything other than the parallelization. This branch is now carries the new vectored evolution, memory problem fixed chunking Z operations and many more small updates carried over from parallel-Julia. We won't list all the updates. The main ones are already discussed here. 
 
 ### v6.0.0 - New Version of the code with RemoteChannels
 v6 of the code implements the RemoteChannel approach for the parallelization. It is quite similar to MPI but RemoteChannels in stdlib of Julia, thus no external package reliance. 

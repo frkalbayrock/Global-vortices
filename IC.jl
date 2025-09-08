@@ -7,16 +7,10 @@ include("IndexMap.jl")
 using .IndexMap
 include("Auxiliary.jl")
 using .Auxiliary_Routines
-
-
-#!
-using OffsetArrays
 using Distributed
-#!
-@everywhere using Profile
-@everywhere using PProf
-@everywhere using DelimitedFiles
-@everywhere using InteractiveUtils
+
+
+
 
 #------------------------------------------------------------------------------------------------#
 #initialConditions sets the initial conditions for the fields ϕ,ψ,Z and calculates the renormalization factor
@@ -32,10 +26,10 @@ function initialConditions!(ϕ_gl,ψ_gl)
     #---Collect ϕ and ψ to global fields for Ω calculation
     for i=2:nprocs()
         lx_p, rx_p, ly_p, ry_p = chunker(i) #_p: physical
-        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ϕ[padd+1:Nx_loc+padd,
-                                                        1+padd:padd+Ny_loc] 
-        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= @fetchfrom i Main.ψ[padd+1:Nx_loc+padd,
-                                                        1+padd:padd+Ny_loc] 
+        ϕ_gl[lx_p:rx_p,ly_p:ry_p] .= (@fetchfrom i Main.ϕ[padd+1:Nx_loc+padd,
+                                                            1+padd:padd+Ny_loc])::Array{ComplexF64, 2} 
+        ψ_gl[lx_p:rx_p,ly_p:ry_p] .= (@fetchfrom i Main.ψ[padd+1:Nx_loc+padd,
+                                                            1+padd:padd+Ny_loc])::Array{Float64, 2}        
     end
 
 
@@ -52,100 +46,42 @@ function initialConditions!(ϕ_gl,ψ_gl)
     S_Ωzero_f = mapZTo4Index(S_Ωzero)
     inv_S_Ωzero_f = mapZTo4Index(inv_S_Ωzero)
 
-    
+
+
     #---Chunk Z and send it to workers
-    @everywhere workers() begin
-
-        #Get the global ends of the lattice chunk
-        #chunker() is written with offset arrays in mind.
-        #Thus we shift the coordinates for 1 based arrays 
-        #(since these sqrt and inverse sqrt matrices are not offset unlike fields)
-        local lx_p, rx_p, ly_p, ry_p = chunker(myid())
-        lx_p = Int(Nx/2+lx_p)
-        rx_p = Int(Nx/2+rx_p)
-        ly_p = Int(Ny/2+ly_p)
-        ry_p = Int(Ny/2+ry_p)
-
-        Z[padd+1:Nx_loc+padd,:,
-          padd+1:Ny_loc+padd,:] .= -im/sqrt(2) .* ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-        dZdt[:,:,:,:,1]         .=   1/sqrt(2) .* ($S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-
-        # #!
-        # global counterA = 0
-        # open("data/zerosofZ.dat","w") do io   
-        #     for j=padd+1:padd+Nx_loc
-        #         for k=padd+1:padd+Ny_loc
-        #             for l=1:Nx
-        #                 for m=1:Ny
-        #                     if  abs(Z[j,l,k,m]) < 1e-6
-        #                         global counterA += 1
-        #                     end
-        #                 end
-        #             end
-        #         end
-        #     end
-        # end
-        # #!
-
-        #--Scope and slicing check
-        # if myid()==2
-
-        #     # #!
-        #     # println("Process $(myid()): lx_p exists in scope: ", isdefined(Main, :lx_p))
-        #     # println("Type of this: ", typeof(lx_p))
-        #     # println("Is is constant: ", isconst(Main, :lx_p))
-        #     # #!
-
-        #     #!
-        #     # Print size information before assignment
-        #     println("Worker $(myid()): Size of full inv_S_Ωzero_f: ", size($inv_S_Ωzero_f))
-        #     println("Worker $(myid()): Memory of full (MB): ", Base.summarysize(($inv_S_Ωzero_f)) / 1e6)
-        #     println("Worker $(myid()): Size of slice: ", 
-        #             size(($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]))
-        #     println("Worker $(myid()): Memory of slice (MB): ", 
-        #             Base.summarysize(($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]) / 1e6)
-        #     #!
-
-        #     # #!
-        #     # # Test memory allocation with and without @views
-        #     # println("Without @views:")
-        #     # @time slice1 = ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-        #     # println("With @views:")
-        #     # @time slice2 = @views ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-
-        #     # # Compare memory footprint
-        #     # println("Memory without @views: ", Base.summarysize(slice1) / 1e6, " MB")
-        #     # println("Memory with @views: ", Base.summarysize(slice2) / 1e6, " MB")
-        #     # #!
-
-            
-
-        #     Base.GC.enable(false)
-
-        #     # Track memory before receiving the matrix
-        #     mem_before = Base.summarysize(Main)
-        #     println("Memory before: ", 
-        #             (mem_before)/1e6, " MB")
-                    
-        #     # Assign to temporary variable to see exactly when allocation happens
-        #     temp = ($inv_S_Ωzero_f)  # Full matrix transferred here
-        #     println("Memory difference after receiving full matrix: ", 
-        #             (Base.summarysize(Main) - mem_before)/1e6, " MB")
-                    
-        #     mem_before = Base.summarysize(Main)
-
-        #     # Create slice
-        #     slice = ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-        #     println("Memory difference after slicing: ", 
-        #             (Base.summarysize(Main) - mem_before)/1e6, " MB")
-
-
-
-        # end
+    @sync for p in workers()
+        #Get the slices from sqrt(Ω) and sqrt(Ω)' to be sent to worker p
+        @inline slices = get_worker_slices(p,inv_S_Ωzero_f,S_Ωzero_f)
+        @spawnat p Main.send_and_update(slices)
     end
 
-
 end
+
+
+
+
+@everywhere workers() function send_and_update(data)
+    Z[padd+1:Nx_loc+padd, :, 
+        padd+1:Ny_loc+padd, :] .= -im/sqrt(2) .* data.inv_s_slice
+    dZdt[:,:,:,:,1]            .=   1/sqrt(2) .* data.s_slice
+end
+
+
+
+
+@inline function get_worker_slices(p,inv_S_Ωzero_f,S_Ωzero_f)
+    lx_p, rx_p, ly_p, ry_p = chunker(p)
+    lx_p = Int(Nx/2+lx_p)
+    rx_p = Int(Nx/2+rx_p)
+    ly_p = Int(Ny/2+ly_p)
+    ry_p = Int(Ny/2+ry_p)
+
+    return (
+        inv_s_slice = inv_S_Ωzero_f[lx_p:rx_p, :, ly_p:ry_p, :],
+        s_slice     =     S_Ωzero_f[lx_p:rx_p, :, ly_p:ry_p, :]
+    )
+end
+
 
 
 @everywhere workers() function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
@@ -314,8 +250,9 @@ function omegaIC(ϕ_s,ψ_s)
     ###################--CHOOSE ONE OF THEM--###########################
     # Taking sqrt of matrix Ω (version 1) #!--->This looks faster for N=3 test (but for N=60,70 got slower and uses more ram)
     eigenVals, eigenVecs = eigen(Ω)
-    S_Ωzero = Symmetric(eigenVecs * Diagonal(eigenVals.^(1/4)) * eigenVecs')
-    inv_S_Ωzero = inv(S_Ωzero)
+    S_Ωzero = Symmetric(eigenVecs * Diagonal(eigenVals.^(0.25)) * eigenVecs')
+    inv_S_Ωzero = Symmetric(eigenVecs * Diagonal(eigenVals.^(-0.25)) * eigenVecs')
+    # inv_S_Ωzero = inv(S_Ωzero)
 
 
     # #Version 2 #!---> seems to be slower at the N=3 test (but for N=60,70 got faster and uses less ram!)

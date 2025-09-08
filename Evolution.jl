@@ -14,23 +14,8 @@ using .Auxiliary_Routines
 using .Constraints_Conserveds
 using .FindVortex
 using DelimitedFiles
-using OffsetArrays
-using Profile
-using PProf
-using JLD2
 
 
-
-# #!Macros to test- for speed and allocations
-# @everywhere workers() macro ϕflux() esc(:(( (ϕ[j+1,k,2] - 2ϕ[j,k,2] + ϕ[j-1,k,2])/dx2 
-#                                 + (ϕ[j,k+1,2] - 2ϕ[j,k,2] + ϕ[j,k-1,2])/dy2 
-#                                 + ( m_ϕ^2 - α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[j,k,2]) ) * ϕ[j,k,2] ))) end
-# @everywhere workers() macro ψflux() esc(:(( (ψ[j+1,k,2] - 2ψ[j,k,2] + ψ[j-1,k,2])/dx2 
-#                                 + (ψ[j,k+1,2] - 2ψ[j,k,2] + ψ[j,k-1,2])/dy2   
-#                                 - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k,2] ))) end
-# @everywhere workers() macro Zflux() esc(:(( (Z[j+1,l,k,m,2] - 2Z[j,l,k,m,2] + Z[j-1,l,k,m,2])/dx2 
-#                                 + (Z[j,l,k+1,m,2] - 2Z[j,l,k,m,2] + Z[j,l,k-1,m,2])/dy2
-#                                 - ( m_ρ^2 + α*abs2(ϕ[j,k,2]) + β*ψ[j,k,2]^2 ) * Z[j,l,k,m,2] ))) end
 
 
 
@@ -52,6 +37,7 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
         end
     end
 
+
     #--Open data files
     ϕdataIO = open("data/phi.dat","w") 
     ψdataIO = open("data/psi.dat","w")
@@ -60,8 +46,9 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
     vortexIO = open("data/vortices.dat","w")
 
 
+
     for t=1:nt
-        
+
         #--Move a time step
         @everywhere workers() half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
         update_Paddings!()
@@ -128,100 +115,180 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
 end
 
 
-# @everywhere function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
-#     for j=padd+1:Nx_loc+padd
-#         for k=padd+1:Ny_loc+padd
-#             ϕ[j,k,2] = ϕ[j,k,t] + dt_half*( dϕdt[j-padd,k-padd,t] ) 
-#             ψ[j,k,2] = ψ[j,k,t] + dt_half*( dψdt[j-padd,k-padd,t] )
-#             for l=1:Nx
-#                 for m=1:Ny
-#                     Z[j,l,k,m,2] = Z[j,l,k,m,t] + dt_half*( dZdt[j-padd,l,k-padd,m,t] )
-#                 end
-#             end
-#         end
-#     end
-# return nothing
-# end
 
 
+
+
+#Half-step (vectorized)
 @everywhere workers() function half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,t)
     @views begin
-    ϕ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .= ϕ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .+ dt_half*( dϕdt[:,:,t] ) 
-    ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .= ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd] .+ dt_half*( dψdt[:,:,t] )
-    Z[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:] .= Z[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:] .+ dt_half*( dZdt[:,:,:,:,t] )
+    @. ϕ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd]     += @views (dt_half) * dϕdt[:,:,t]
+    @. ψ[padd+1:Nx_loc+padd,padd+1:Ny_loc+padd]     += @views (dt_half) * dψdt[:,:,t]
+    @. Z[padd+1:Nx_loc+padd,:,padd+1:Ny_loc+padd,:] +=  (dt_half) * @views dZdt[:,:,:,:,t]
     end
 return nothing
 end
 
-#!Macro
-# @everywhere function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
-#     for j=padd+1:Nx_loc+padd
-#         for k=padd+1:Ny_loc+padd
-#             meanSqr_Rho = @views sum(abs2, Z[j,:,k,:,1])#!
-#             #Calculate fluxes for ϕ and ψ
-#             dϕdt[j-padd,k-padd,2] = dϕdt[j-padd,k-padd,1] + dt*( @ϕflux() )
-#             dψdt[j-padd,k-padd,2] = dψdt[j-padd,k-padd,1] + dt*( @ψflux() )
-#             for l=1:Nx
-#                 for m=1:Ny
-#                     dZdt[j-padd,l,k-padd,m,2] = dZdt[j-padd,l,k-padd,m,1] + dt*( @Zflux() )
-#                 end
-#             end
-#         end
-#     end
-# return nothing
-# end
 
+
+#Leap-forward (vectorized)
 @everywhere workers() function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
-    for j=padd+1:Nx_loc+padd
-        for k=padd+1:Ny_loc+padd
-            #Calculate fluxes for ϕ and ψ
-            @inline ϕ_flux , ψ_flux = fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k)
-            dϕdt[j-padd,k-padd,2] = dϕdt[j-padd,k-padd,1] + dt*( ϕ_flux )
-            dψdt[j-padd,k-padd,2] = dψdt[j-padd,k-padd,1] + dt*( ψ_flux )
-            for l=1:Nx
-                for m=1:Ny
-                    # @views Z_flux = flux_Z(ϕ[j,k,1],ψ[j,k,1],Z[:,l,:,m,1],j,k,nnl_x,nnr_x,nnl_y,nnr_y)
-                    @inline Z_flux = flux_Z(ϕ,ψ,Z,j,l,k,m)
-                    dZdt[j-padd,l,k-padd,m,2] = dZdt[j-padd,l,k-padd,m,1] + dt*( Z_flux )
-                end
-            end
-        end
-    end
+
+    fluxes_ϕ_ψ!(ϕ,ψ,Z,ϕ_flux,ψ_flux,meanSqr_Rho,meanSqrRenorm)
+    flux_Z!(ϕ,ψ,Z,Z_flux)
+    @. @views dϕdt[:, :, 2] = dϕdt[:, :, 1] + dt*( ϕ_flux )
+    @. @views dψdt[:, :, 2] = dψdt[:, :, 1] + dt*( ψ_flux )
+    @. @views dZdt[:,:,:,:,2] = dZdt[:,:,:,:,1] + dt*( Z_flux )
+
 return nothing
 end
 
 
-@everywhere workers() @inline function fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k)
 
-    #2-point function
-    meanSqr_Rho = @views sum(abs2, Z[j,:,k,:]) #!i need to check if this is the same as 2-index notation.
+#Fluxes for ϕ and ψ
+@everywhere workers() @inline function fluxes_ϕ_ψ!(ϕ,ψ,Z,ϕ_flux,ψ_flux,meanSqr_Rho,meanSqrRenorm)
 
-    ϕ_flux = ( (ϕ[j+1,k] - 2ϕ[j,k] + ϕ[j-1,k])/dx2 + (ϕ[j,k+1] - 2ϕ[j,k] + ϕ[j,k-1])/dy2
-            + ( m_ϕ^2 - α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[j,k]) ) * ϕ[j,k] )
+    #Save ranges that are gonna be used for clarity 
+    j = padd+1 : Nx_loc+padd     
+    k = padd+1 : Ny_loc+padd     
 
-    ψ_flux = ( (ψ[j+1,k] - 2ψ[j,k] + ψ[j-1,k])/dx2 + (ψ[j,k+1] - 2ψ[j,k] + ψ[j,k-1])/dy2   
-            - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k] )
+    @views begin
+        #2-point function
+        meanSqr_Rho .= @views dropdims(sum(abs2, Z[j, :, k, :]; dims=(2,4)), dims=(2,4))
 
-return ϕ_flux ,ψ_flux
+        @. ϕ_flux = ( 
+                      (ϕ[j+1, k] - 2ϕ[j, k] +  ϕ[j-1, k])/dx2 
+                    + (ϕ[j, k+1] - 2ϕ[j, k] +  ϕ[j, k-1])/dy2
+                    + ( m_ϕ^2 - α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) - λ * abs2(ϕ[j,k]) ) * ϕ[j,k] 
+                    )
+
+        @. ψ_flux = ( 
+                      (ψ[j+1, k] - 2ψ[j, k] +  ψ[j-1, k])/dx2 
+                    + (ψ[j, k+1] - 2ψ[j, k] +  ψ[j, k-1])/dy2   
+                    - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k] 
+                    )
+    end
+
 end
 
 
-@everywhere workers() @inline function flux_Z(ϕ,ψ,Z,j,l,k,m)
-    Z_flux = ( (Z[j+1,l,k,m] - 2Z[j,l,k,m] + Z[j-1,l,k,m])/dx2
-             + (Z[j,l,k+1,m] - 2Z[j,l,k,m] + Z[j,l,k-1,m])/dy2
-             - ( m_ρ^2 + α*abs2(ϕ[j,k]) + β*ψ[j,k]^2 ) * Z[j,l,k,m] )
+#Flux for Z
+@everywhere workers() @inline function flux_Z!(ϕ,ψ,Z,Z_flux)
+
+    #Save ranges that are gonna be used for clarity 
+    j = padd+1 : Nx_loc+padd     
+    k = padd+1 : Ny_loc+padd     
+
+    @views begin
+        # ϕ[j,k] ψ[j,k]'s are 2D arrays so we expand them to 
+        # 4D for vectorized calculation with Z: (j,1,k,1)
+        M = reshape(@.(m_ρ^2 + α * abs2(ϕ[j, k]) + β * (ψ[j, k]^2)), 
+                                                Nx_loc, 1, Ny_loc, 1)        
+
+        # final vectorized update (broadcasting is explicit and correct)
+        @. Z_flux = ( 
+                    ( ( Z[j+1, :, k, :] - 2 * Z[j, :, k, :] +  Z[j-1, :, k, :]) / dx2 
+                     +( Z[j, :, k+1, :] - 2 * Z[j, :, k, :] +  Z[j, :, k-1, :]) / dy2 ) 
+                     - M * Z[j, :, k, :]
+                    )
+    end
+
 end
 
 
+
+#Updating the time coordinates for the next step
 @everywhere workers() function updateForNextStep(dϕdt,dψdt,dZdt)
+
     #Shift time coordinates
     @views begin
         dϕdt[:,:,1] .= dϕdt[:,:,2]
         dψdt[:,:,1] .= dψdt[:,:,2]
         dZdt[:,:,:,:,1] .= dZdt[:,:,:,:,2]
     end
+
 return nothing
 end
+
+
+
+
+
+
+
+#!OLD Looped leap_forward and accompanying fluxes
+    # @everywhere workers() function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
+    #     for j=padd+1:Nx_loc+padd
+    #         for k=padd+1:Ny_loc+padd
+    #             #Calculate fluxes for ϕ and ψ
+    #             @inline flux = fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k)
+    #             dϕdt[j-padd,k-padd,2] = dϕdt[j-padd,k-padd,1] + dt*( flux.ϕ )
+    #             dψdt[j-padd,k-padd,2] = dψdt[j-padd,k-padd,1] + dt*( flux.ψ )
+    #             for l=1:Nx
+    #                 for m=1:Ny
+    #                     # @views Z_flux = flux_Z(ϕ[j,k,1],ψ[j,k,1],Z[:,l,:,m,1],j,k,nnl_x,nnr_x,nnl_y,nnr_y)
+    #                     @inline Z_flux = flux_Z(ϕ,ψ,Z,j,l,k,m)
+    #                     dZdt[j-padd,l,k-padd,m,2] = dZdt[j-padd,l,k-padd,m,1] + dt*( Z_flux )
+    #                 end
+    #             end
+    #         end
+    #     end
+    # return nothing
+    # end
+
+    # @everywhere workers() @inline function fluxes_ϕ_ψ(ϕ,ψ,Z,meanSqrRenorm,j,k)
+
+    #     #2-point function
+    #     meanSqr_Rho = @views sum(abs2, Z[j,:,k,:]) #!i need to check if this is the same as 2-index notation.
+
+    #     ϕ_flux = ( (ϕ[j+1,k] - 2ϕ[j,k] + ϕ[j-1,k])/dx2 + (ϕ[j,k+1] - 2ϕ[j,k] + ϕ[j,k-1])/dy2
+    #             + ( m_ϕ^2 - α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[j,k]) ) * ϕ[j,k] )
+
+    #     ψ_flux = ( (ψ[j+1,k] - 2ψ[j,k] + ψ[j-1,k])/dx2 + (ψ[j,k+1] - 2ψ[j,k] + ψ[j,k-1])/dy2   
+    #             - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k] )
+
+    # return (ϕ = ϕ_flux, ψ = ψ_flux)
+    # end
+
+
+    # @everywhere workers() @inline function flux_Z(ϕ,ψ,Z,j,l,k,m)
+    #     Z_flux = ( (Z[j+1,l,k,m] - 2Z[j,l,k,m] + Z[j-1,l,k,m])/dx2
+    #              + (Z[j,l,k+1,m] - 2Z[j,l,k,m] + Z[j,l,k-1,m])/dy2
+    #              - ( m_ρ^2 + α*abs2(ϕ[j,k]) + β*ψ[j,k]^2 ) * Z[j,l,k,m] )
+    # return Z_flux
+    # end
+
+
+#!Old Macro leap_forward
+    # #!Macros to test- for speed and allocations
+    # @everywhere workers() macro ϕflux() esc(:(( (ϕ[j+1,k] - 2ϕ[j,k] + ϕ[j-1,k])/dx2 
+    #                                 + (ϕ[j,k+1] - 2ϕ[j,k] + ϕ[j,k-1])/dy2 
+    #                                 + ( m_ϕ^2 - α/2 *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) -λ* abs2(ϕ[j,k]) ) * ϕ[j,k] ))) end
+    # @everywhere workers() macro ψflux() esc(:(( (ψ[j+1,k] - 2ψ[j,k] + ψ[j-1,k])/dx2 
+    #                                 + (ψ[j,k+1] - 2ψ[j,k] + ψ[j,k-1])/dy2   
+    #                                 - ( m_ψ^2 + β *(meanSqr_Rho - meanSqrRenorm)/(dx*dy) ) * ψ[j,k] ))) end
+    # @everywhere workers() macro Zflux() esc(:(( (Z[j+1,l,k,m] - 2Z[j,l,k,m] + Z[j-1,l,k,m])/dx2 
+    #                                 + (Z[j,l,k+1,m] - 2Z[j,l,k,m] + Z[j,l,k-1,m])/dy2
+    #                                 - ( m_ρ^2 + α*abs2(ϕ[j,k]) + β*ψ[j,k]^2 ) * Z[j,l,k,m] ))) end
+
+    #!Macro
+    # @everywhere workers() function leap_forward!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
+    #     for j=padd+1:Nx_loc+padd
+    #         for k=padd+1:Ny_loc+padd
+    #             meanSqr_Rho = @views sum(abs2, Z[j,:,k,:,1])#!
+    #             #Calculate fluxes for ϕ and ψ
+    #             dϕdt[j-padd,k-padd,2] = dϕdt[j-padd,k-padd,1] + dt*( @ϕflux() )
+    #             dψdt[j-padd,k-padd,2] = dψdt[j-padd,k-padd,1] + dt*( @ψflux() )
+    #             for l=1:Nx
+    #                 for m=1:Ny
+    #                     dZdt[j-padd,l,k-padd,m,2] = dZdt[j-padd,l,k-padd,m,1] + dt*( @Zflux() )
+    #                 end
+    #             end
+    #         end
+    #     end
+    # return nothing
+    # end
+
 
 # 2-index notation (Leap-Frog)
     # export time_evolve!
