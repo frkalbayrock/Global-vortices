@@ -78,7 +78,7 @@ run(`mkdir -p data/energies`)
         const Z =    Array{ComplexF64,4}(undef, Nx_loc+padding_size, Nx, Ny_loc+padding_size, Ny)
         const dZdt = Array{ComplexF64,5}(undef, Nx_loc, Nx, Ny_loc, Ny, 2)
         #Flux fields for vectorized time evolution
-        const ϕ_flux = Array{Float64,2}(undef, Nx_loc, Ny_loc)
+        const ϕ_flux = Array{ComplexF64,2}(undef, Nx_loc, Ny_loc)
         const ψ_flux = Array{Float64,2}(undef, Nx_loc, Ny_loc)
         const Z_flux = Array{ComplexF64,4}(undef, Nx_loc, Nx, Ny_loc, Ny)
         const meanSqr_Rho = Array{Float64,2}(undef, Nx_loc, Ny_loc)
