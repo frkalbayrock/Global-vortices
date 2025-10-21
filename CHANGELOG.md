@@ -1,6 +1,34 @@
 # CHANGELOG
 
 
+### v1.6.0 - Sqrt(Ω) Changes and 4 Gaussian Profiles
+
+#### Auxiliary.jl / Enegy.jl:
+- Loading OffsetArrays package is removed as this is not needed on these modules spaces. 
+
+#### Evolution.jl:
+- LazyArrays testing is done on this module and then removed. Based on the limited amount of tests we have it is not worth using it for this code.
+
+#### IC.jl:
+- The separation of the initial Gaussian wavepackets are now being dynamically adjusted based on the initial conditions. This is necessary as the wavepackets are dissipating fast and different Gaussian profiles would give different interaction patterns at a fixed separation. gaussianseparation() gives initial separation r0 based on the Gaussian profiles. We set it such that the overlap of the two Gaussians is minimal initially. (1/1000th of the amplitude is the region they overlap in the boosted direction).
+- 4 Gaussian profiles added. This way we might be able to get away with smaller initial energies for each Gaussian profiles. The original two Gaussians were along the diagonal x=y direction, the other two placed in the x=-y diagonal and boosted towards the center. More test should be done for physics.
+- Fluff, test functions, benchmarking tools are removed.
+- The most important update is the change in the way the initial sqrt(Ω) and its inverse are calculated. Once 4 Gaussian profiles added we noticed that the eigen solver eigen!(::SymmetricMatrix) cannot finalize the eigenvalue and eigenvector calculations. We sought to find a solution and came up with multiple options. Only one of them made sense with the performance in mind. We wrote manual LAPACK wrappers to access the individual functions used for eigen problem. Having a symmetric Ω^2 wasn't enough. We now first tridiagonalize the Ω^2 matrix using the LAPACK function dsytrd!() and then solve the tridiagonal eigen problem with the LAPACK function dstedc(). Both of these requires wrappers from Julia to be accessed and those function are written on a separate file (not a module) called "lapack_wrappers.jl". (sym_tridiagonalize!(), stedc_manul())
+- The original method is still there but commented out in case it is needed in a particular situation.
+- omega_IC() got some cosmetic changes for readability; removed all the test matrices.
+- Few cosmestic changes.
+
+#### main.jl: 
+- Benchmarking tools are not loaded by default; ust commented out in case needed later.
+- The @allocated wrapper on initialConditions!() is removed. 
+- All the commented out testing code is removed. Some copied somewhere else that is no backed-up in Git, others just completely deleted. In case any of them are needed just refer to the previous commits of this version.
+
+#### Parameters.jl:
+- The parameters of the Gaussian wavepackets are now included and exported here rather than in IC.jl. This should make altering initial conditions easier.
+
+
+
+
 ### v1.5.0 - Vectorization for Speed
 We found a way to vectorize the leap_forward() function for time evolution. This gave a huge increase in performance especially for larger lattices. The implentation and tests are done on both small and really large (cluster size) lattices. 
 

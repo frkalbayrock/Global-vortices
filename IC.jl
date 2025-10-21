@@ -8,7 +8,7 @@ using .IndexMap
 include("Auxiliary.jl")
 using .Auxiliary_Routines
 using Distributed
-
+include("lapack_wrappers.jl")
 
 
 
@@ -18,9 +18,12 @@ export initialConditions!
 #Set initial conditions for the fields ϕ, ψ, ρ
 function initialConditions!(ϕ_gl,ψ_gl)
 
-    
+    #---Find the separation between Gaussians
+    # r0 = gaussian_separation()
+    r0 = 1.25#!
+
     #---Set i.c. for ϕ and ψ locally
-    @everywhere workers() ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
+    @everywhere workers() ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt,$r0)
 
 
     #---Collect ϕ and ψ to global fields for Ω calculation
@@ -55,99 +58,46 @@ function initialConditions!(ϕ_gl,ψ_gl)
         @spawnat p Main.send_and_update(slices)
     end
 
-    
-    # #---Chunk Z and send it to workers
-    # @everywhere workers() begin
-
-    #     #Get the global ends of the lattice chunk
-    #     #chunker() is written with offset arrays in mind.
-    #     #Thus we shift the coordinates for 1 based arrays 
-    #     #(since these sqrt and inverse sqrt matrices are not offset unlike fields)
-    #     local lx_p, rx_p, ly_p, ry_p = chunker(myid())
-    #     lx_p = Int(Nx/2+lx_p)
-    #     rx_p = Int(Nx/2+rx_p)
-    #     ly_p = Int(Ny/2+ly_p)
-    #     ry_p = Int(Ny/2+ry_p)
-
-    #     Z[padd+1:Nx_loc+padd,:,
-    #       padd+1:Ny_loc+padd,:] .= -im/sqrt(2) .* ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-    #     dZdt[:,:,:,:,1]         .=   1/sqrt(2) .* ($S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-
-    #     # #!
-    #     # global counterA = 0
-    #     # open("data/zerosofZ.dat","w") do io   
-    #     #     for j=padd+1:padd+Nx_loc
-    #     #         for k=padd+1:padd+Ny_loc
-    #     #             for l=1:Nx
-    #     #                 for m=1:Ny
-    #     #                     if  abs(Z[j,l,k,m]) < 1e-6
-    #     #                         global counterA += 1
-    #     #                     end
-    #     #                 end
-    #     #             end
-    #     #         end
-    #     #     end
-    #     # end
-    #     # #!
-
-    #     #--Scope and slicing check
-    #     # if myid()==2
-
-    #     #     # #!
-    #     #     # println("Process $(myid()): lx_p exists in scope: ", isdefined(Main, :lx_p))
-    #     #     # println("Type of this: ", typeof(lx_p))
-    #     #     # println("Is is constant: ", isconst(Main, :lx_p))
-    #     #     # #!
-
-    #     #     #!
-    #     #     # Print size information before assignment
-    #     #     println("Worker $(myid()): Size of full inv_S_Ωzero_f: ", size($inv_S_Ωzero_f))
-    #     #     println("Worker $(myid()): Memory of full (MB): ", Base.summarysize(($inv_S_Ωzero_f)) / 1e6)
-    #     #     println("Worker $(myid()): Size of slice: ", 
-    #     #             size(($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]))
-    #     #     println("Worker $(myid()): Memory of slice (MB): ", 
-    #     #             Base.summarysize(($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]) / 1e6)
-    #     #     #!
-
-    #     #     # #!
-    #     #     # # Test memory allocation with and without @views
-    #     #     # println("Without @views:")
-    #     #     # @time slice1 = ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-    #     #     # println("With @views:")
-    #     #     # @time slice2 = @views ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-
-    #     #     # # Compare memory footprint
-    #     #     # println("Memory without @views: ", Base.summarysize(slice1) / 1e6, " MB")
-    #     #     # println("Memory with @views: ", Base.summarysize(slice2) / 1e6, " MB")
-    #     #     # #!
-
-            
-
-    #     #     Base.GC.enable(false)
-
-    #     #     # Track memory before receiving the matrix
-    #     #     mem_before = Base.summarysize(Main)
-    #     #     println("Memory before: ", 
-    #     #             (mem_before)/1e6, " MB")
-                    
-    #     #     # Assign to temporary variable to see exactly when allocation happens
-    #     #     temp = ($inv_S_Ωzero_f)  # Full matrix transferred here
-    #     #     println("Memory difference after receiving full matrix: ", 
-    #     #             (Base.summarysize(Main) - mem_before)/1e6, " MB")
-                    
-    #     #     mem_before = Base.summarysize(Main)
-
-    #     #     # Create slice
-    #     #     slice = ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-    #     #     println("Memory difference after slicing: ", 
-    #     #             (Base.summarysize(Main) - mem_before)/1e6, " MB")
+end
 
 
 
-    #     # end
-    # end
 
 
+
+function gaussian_separation() 
+
+    #Create the guide Gaussian for determining separation
+    #from the given set of parameters for the wavepackets
+    # ψGuide = OffsetArray(zeros(Float64, Nx,Ny),lx:rx,ly:ry)
+    ψGuide = zeros(Float64, Nx,Ny)
+    for j in axes(ψGuide,1)
+        x = (j - Int(Nx/2-1)) * dx
+        for k in axes(ψGuide,2)
+            y = (k - Int(Nx/2-1)) * dy
+            ψGuide[j,k] = amp*(exp( -width/(v^2)
+                                * ( ( - y *(-v))^2 + (x* (-v) )^2 * γ^2 ) ))
+        end
+    end
+
+
+    #Determine threshold from the amplitude
+    threshold = 10^-3 * amp 
+
+    #Find the position of the peak
+    peak = argmax(ψGuide)
+
+    #Find the position of cut-off
+    cutoff = findfirst(y -> y > threshold, ψGuide[:, peak[2]])
+
+    #Find the distance from cut-off to peak
+    distance = dx * abs(cutoff - peak[1])
+
+    #Determine r0
+    r0 = 1/sqrt(2) * (distance + dx/2)
+    @show r0
+
+return r0
 end
 
 
@@ -161,8 +111,11 @@ end
 
 
 
-
 @inline function get_worker_slices(p,inv_S_Ωzero_f,S_Ωzero_f)
+    #Get the global ends of the lattice chunk
+        #chunker() is written with offset arrays in mind.
+        #Thus we shift the coordinates for base-1 arrays 
+        #(since these sqrt and inverse sqrt matrices are not offset unlike fields)
     lx_p, rx_p, ly_p, ry_p = chunker(p)
     lx_p = Int(Nx/2+lx_p)
     rx_p = Int(Nx/2+rx_p)
@@ -177,192 +130,159 @@ end
 
 
 
-@everywhere workers() function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt)
+
+@everywhere workers() function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt,r0)
 
     #Find the chunk's physical coordinates and physical ends
     lx_p, rx_p, ly_p, ry_p = chunker(myid())
 
-    #ψ parameters
-    width=2.0
-    amp=10
-    vx=0.3
-    vy=0.4
-    r0=1.25
-    γ=1/sqrt(1-(vx^2+vy^2))
-    #!fluctuations
+
+    #ϕ fluctuation parameters
     κ=2*2pi/L
     f_amp = 0.25
 
     #ϕ and ψ i.c.
     for j in padd+1:Nx_loc+padd
         x = (lx_p+(j-padd)-1)*dx
-        x1 = x-r0
-        x2 = x+r0
+        x1 = x4 = x-r0
+        x2 = x3 = x+r0
         for k=padd+1:Ny_loc+padd
             y = (ly_p+(k-padd)-1)*dy
-            y1 = y-r0
-            y2 = y+r0
+            y1 = y3 = y-r0
+            y2 = y4 = y+r0
             δϕ = f_amp*sin(κ*x)sin(κ*y) 
             ϕ[j,k] = η #+ im*δϕ
             dϕdt[j-padd,k-padd,1] = 0
-            ψ[j,k] = amp*(exp( -width/(vx^2 + vy^2)
-                               * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )       
-                          + exp( -width/(vx^2 + vy^2) 
-                             * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
-            dψdt[j-padd,k-padd,1] = ( 2amp *width *γ^2 *(x1 *(-vx) + y1 *(-vy)) 
-                            *exp(-width/(vx^2 + vy^2) * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1 *(-vy))^2 * γ^2 ))
-                            + 2amp *width *γ^2 *(x2 *(vx) + y2 *(vy)) 
-                            *exp(-width/(vx^2 + vy^2) * ( (x2 *(vy) - y2 *(vx))^2 + (x2* (vx) + y2 *(vy))^2 * γ^2 ))    )
+            # ψ[j,k] = amp*(exp( -width/(vx^2 + vy^2)
+            #                    * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )       
+            #               + exp( -width/(vx^2 + vy^2) 
+            #                  * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
+            # dψdt[j-padd,k-padd,1] = ( 2amp *width *γ^2 *(x1 *(-vx) + y1 *(-vy)) 
+            #                 *exp(-width/(vx^2 + vy^2) * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1 *(-vy))^2 * γ^2 ))
+            #                 + 2amp *width *γ^2 *(x2 *(vx) + y2 *(vy)) 
+            #                 *exp(-width/(vx^2 + vy^2) * ( (x2 *(vy) - y2 *(vx))^2 + (x2* (vx) + y2 *(vy))^2 * γ^2 ))    )
+            ψ[j,k] = amp*(
+                          exp( -width/(vx^2 + vy^2)
+                                * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )  #-1-     
+                        + exp( -width/(vx^2 + vy^2)     
+                                * ( (x2 *(+vy) - y2 *(+vx))^2 + (x2* (+vx) + y2 *(+vy))^2 * γ^2 ))  #-2-
+                        # + exp( -width/(vx^2 + vy^2)
+                        #         * ( (x3 *(-vy) - y3 *(+vx))^2 + (x3* (+vx) + y3*(-vy))^2 * γ^2 ) )  #-3-
+                        # + exp( -width/(vx^2 + vy^2)
+                        #         * ( (x4 *(+vy) - y4 *(-vx))^2 + (x4* (-vx) + y4*(+vy))^2 * γ^2 ) )  #-4-
+                        )
+
+            dψdt[j-padd,k-padd,1] = 2amp *width *γ^2 *( 
+                                      (x1 *(-vx) + y1 *(-vy)) 
+                                        * exp(-width/(vx^2 + vy^2) * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1 *(-vy))^2 * γ^2 )) #-1-
+                                    + (x2 *(+vx) + y2 *(+vy)) 
+                                        * exp(-width/(vx^2 + vy^2) * ( (x2 *(+vy) - y2 *(+vx))^2 + (x2* (+vx) + y2 *(+vy))^2 * γ^2 )) #-2-
+                                    # + (x3 *(+vx) + y3 *(-vy)) 
+                                    #     * exp(-width/(vx^2 + vy^2) * ( (x3 *(-vy) - y3 *(+vx))^2 + (x3* (+vx) + y3 *(-vy))^2 * γ^2 )) #-3-
+                                    # + (x4 *(-vx) + y4 *(+vy)) 
+                                    #     * exp(-width/(vx^2 + vy^2) * ( (x4 *(+vy) - y4 *(-vx))^2 + (x4* (-vx) + y4 *(+vy))^2 * γ^2 )) #-4-
+                                    )
+
         end
     end
 end
 
-# @everywhere workers() function ic_Z(Z,dZdt)
-# @everywhere workers() function ic_Z!()
 
-#     # #Get the global ends of the lattice chunk
-#     # #chunker() is written with offset arrays in mind.
-#     # #Thus we shift the coordinates for 1 based arrays 
-#     # #(since these sqrt and inverse sqrt matrices are not offset unlike fields)
-#     # lx_p, rx_p, ly_p, ry_p = chunker(myid())
-#     # lx_p = Int(Nx/2+lx_p)
-#     # rx_p = Int(Nx/2+rx_p)
-#     # ly_p = Int(Ny/2+ly_p)
-#     # ry_p = Int(Ny/2+ry_p)
 
-#     # #!
-#     # println("Process $(myid()): lx_p exists in scope: ", isdefined(Main, :lx_p))
-#     # println("Type of this: ", typeof(lx_p))
-#     # println("Is is constant: ", isconst(Main, :lx_p))
-#     # #!
-
-#     # Z[padd+1:Nx_loc+padd,:,
-#     #     padd+1:Ny_loc+padd,:] .= -im/sqrt(2) .* ($inv_S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-#     # dZdt[:,:,:,:,1]         .=   1/sqrt(2) .* ($S_Ωzero_f)[lx_p:rx_p,:,ly_p:ry_p,:]
-
-#     # #!
-#     # global counterA = 0
-#     # open("data/zerosofZ.dat","w") do io   
-#     #     for j=padd+1:padd+Nx_loc
-#     #         for k=padd+1:padd+Ny_loc
-#     #             for l=1:Nx
-#     #                 for m=1:Ny
-#     #                     if  abs(Z[j,l,k,m]) < 1e-6
-#     #                         global counterA += 1
-#     #                     end
-#     #                 end
-#     #             end
-#     #         end
-#     #     end
-#     # end
-#     # #!
-
-# end
    
 #omegaIC calculates the Ω^2 matrix used in CQC calculations.
 #And it uses to return sqrt(Ω) and inverse of sqrt(Ω) matrices to be used in the initial conditions
 function omegaIC(ϕ_s,ψ_s)
     
     #Calculate the matrix Ω^2
-    Ω=zeros(N2,N2)
-    # #! OMEGA TESTER -- Keep it for now in case need to test again.
-        # CCD=zeros(N2,N2)
-        # Ã=zeros(N2,N2)
-        # B̃=zeros(N2,N2)
-        # A=zeros(N2,N2)
-        # B=zeros(N2,N2)
-        # W=zeros(N2,N2)
-        # Q=zeros(N2,N2)
 
+    #Initialize Ω^2
+    Ω = zeros(Float64, N2, N2)
+
+    #Assign the values based on CQC
     for J=1:N2
         for K=1:N2
             if (J==K)   #C, C̃, D
                 Ω[J,K] = Ω[J,K]+ 2/dx^2 + 2/dy^2 + (m_ρ^2 + α*abs2(ϕ_s[J]) + β*ψ_s[K]^2)
-                # CCD[J,K]= CCD[J,K]+ 2/dx^2 + 2/dy^2 + (m_ρ^2 + alpha*abs2(ϕ_s[J]) + beta*ψ_s[K]^2) #!
 
             elseif (J==K+1)         #Ã  and W
                 Ω[J,K] = Ω[J,K] + -1/dy^2   #Ã
-                # Ã[J,K] = Ã[J,K] + -1/dy^2 #!
 
                 if (mod(K,N)==0 && K!=N2)  #W
                     Ω[J,K] = Ω[J,K] + 1/dy^2
-                    # W[J,K] = W[J,K] + 1/dy^2#!
                 end
 
             elseif (J==1 && K==N2) #Ã  and W
                 Ω[J,K] = Ω[J,K] + -1/dy^2   #Ã 
-                # Ã[J,K] = Ã[J,K] + -1/dy^2#!
 
                 Ω[J,K] = Ω[J,K] + 1/dy^2     #W
-                # W[J,K] = W[J,K] + 1/dy^2#!
 
             elseif (J==K-1)         #B̃  and W
                 Ω[J,K] = Ω[J,K] + -1/dy^2   #B̃
-                # B̃[J,K] = B̃[J,K] + -1/dy^2#!
 
                 if (mod(J,N)==0 &&  J!=N2) #W
                     Ω[J,K] = Ω[J,K] + 1/dy^2
-                    # W[J,K] = W[J,K] + 1/dy^2#!
                 end
 
             elseif (J==N2 && K==1) #B̃ and W
                 Ω[J,K] = Ω[J,K] + -1/dy^2   #B̃
-                # B̃[J,K] = B̃[J,K] + -1/dy^2#!
                 
                 Ω[J,K] = Ω[J,K] + 1/dy^2 #W
-                # W[J,K] = W[J,K] + 1/dy^2#!
 
             elseif (J==K+N && J>N)  #A
                 Ω[J,K] = Ω[J,K] + -1/dx^2
-                # A[J,K] = A[J,K] + -1/dx^2#!
+
             elseif (J in 1:N && K == J+N2-N )  #A
                     Ω[J,K] = Ω[J,K] + -1/dx^2
-                    # A[J,K] = A[J,K] + -1/dx^2#!
 
             elseif (J==K-N && J<N2-N+1)     #B
                 Ω[J,K] = Ω[J,K] + -1/dx^2
-                # B[J,K] = B[J,K] + -1/dx^2 #!
+
             elseif (J in N2-N+1:N2 && K==J-(N2-N))   #B
                     Ω[J,K] = Ω[J,K] + -1/dx^2
-                    # B[J,K] = B[J,K] + -1/dx^2#!
 
             elseif (K==J-(N-1) && mod(J,N)==0)  #Q
                 Ω[J,K] = Ω[J,K] + -1/dy^2
-                # Q[J,K] = Q[J,K] + -1/dy^2#!
+
             elseif (J==K-(N-1) && mod(K,N)==0)  #Q
                 Ω[J,K] = Ω[J,K] + -1/dy^2
-                # Q[J,K] = Q[J,K] + -1/dy^2#!
+
             end
         end
     end
 
     #Letting Julia know this is a Symmetric type for performance
-    Ω = Symmetric(Ω)
+    # Ω = Symmetric(Ω)
 
-
-    ###################--CHOOSE ONE OF THEM--###########################
+    # ###################--CHOOSE ONE OF THEM--###########################
     # Taking sqrt of matrix Ω (version 1) #!--->This looks faster for N=3 test (but for N=60,70 got slower and uses more ram)
-    eigenVals, eigenVecs = eigen(Ω)
-    S_Ωzero = Symmetric(eigenVecs * Diagonal(eigenVals.^(0.25)) * eigenVecs')
-    inv_S_Ωzero = Symmetric(eigenVecs * Diagonal(eigenVals.^(-0.25)) * eigenVecs')
-    # inv_S_Ωzero = inv(S_Ωzero)
+    # println("---BEGIN---")
+    # @time begin
+    #     eigenVals, eigenVecs = eigen!(Ω; sortby=nothing)
+    #     S_Ωzero = Symmetric(eigenVecs * Diagonal(eigenVals.^(0.25)) * eigenVecs')
+    #     inv_S_Ωzero = Symmetric(eigenVecs * Diagonal(eigenVals.^(-0.25)) * eigenVecs')
+    # end
+    # println("---END---")
+  
 
-
-    # #Version 2 #!---> seems to be slower at the N=3 test (but for N=60,70 got faster and uses less ram!)
+    #Version 2 #!---> seems to be slower at the N=3 test (but for N=60,70 got faster and uses less ram!)
     # S_Ωzero = zeros(N2,N2)
     # inv_S_Ωzero = zeros(N2,N2)
     # S_Ωzero = sqrt(sqrt(Ω))  #S_ stands for square root
     # inv_S_Ωzero = inv(S_Ωzero)
 
+    # Version 3 (fastest and the most robust/reliable so far)
+    H, Q = sym_tridiagonalize!(Ω)
+    eigenVals, Z_T = stedc_manual(H; compute_vectors=true)
+    eigenVecs = Q * Z_T
+    S_Ωzero     = Symmetric(eigenVecs * Diagonal(eigenVals.^(0.25)) * eigenVecs')
+    inv_S_Ωzero = Symmetric(eigenVecs * Diagonal(eigenVals.^(-0.25)) * eigenVecs')
     ####################################################################
 
-
-
-    return S_Ωzero, inv_S_Ωzero
-    #!
-    # return Ω,CCD,Ã,B̃,A,B,W,Q
-
+return S_Ωzero, inv_S_Ωzero
 end
+
+
 
 
 export renormalization

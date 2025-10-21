@@ -713,117 +713,117 @@
 
 
 
-#!2D Version
-using Distributed
-addprocs(4)
+# #!2D Version
+# using Distributed
+# addprocs(4)
 
-@everywhere using Distributed
+# @everywhere using Distributed
 
-const padd=2
-const pids = workers()
-const dims = (2, 2)  # Adjust based on number of workers (e.g. 2x2 grid for 4 workers)
-@assert prod(dims) == length(pids) "Number of workers must match grid size"
+# const padd=2
+# const pids = workers()
+# const dims = (2, 2)  # Adjust based on number of workers (e.g. 2x2 grid for 4 workers)
+# @assert prod(dims) == length(pids) "Number of workers must match grid size"
 
-# Arrange workers in row-major order
-const pid_grid = reshape(pids, dims)
-
-
-# Build neighbor dictionary
-const neighbors = Dict{Int, NamedTuple{(:left, :right, :top, :bottom), NTuple{4, Int}}}()
-
-for j in 1:dims[2], i in 1:dims[1]
-    pid = pid_grid[i, j]
-    neighbors[pid] = (
-        left   = pid_grid[mod1(i - 1, dims[1]), j],
-        right  = pid_grid[mod1(i + 1, dims[1]), j],
-        top    = pid_grid[i, mod1(j - 1, dims[2])],
-        bottom = pid_grid[i, mod1(j + 1, dims[2])]
-    )
-end
+# # Arrange workers in row-major order
+# const pid_grid = reshape(pids, dims)
 
 
+# # Build neighbor dictionary
+# const neighbors = Dict{Int, NamedTuple{(:left, :right, :top, :bottom), NTuple{4, Int}}}()
 
-function run_anan()
-    # Step 1: Each worker creates its own receive buffers locally
-    @sync for pid in pids
-        @async remotecall_wait(pid) do
-            global recv_ψ = Dict{Symbol, RemoteChannel}()
-            recv_ψ[:from_left]   = RemoteChannel(() -> Channel{Array{Float64,2}}(1))
-            recv_ψ[:from_right]  = RemoteChannel(() -> Channel{Array{Float64,2}}(1))
-            recv_ψ[:from_bottom] = RemoteChannel(() -> Channel{Array{Float64,2}}(1))
-            recv_ψ[:from_top]    = RemoteChannel(() -> Channel{Array{Float64,2}}(1))
-        end
-    end
+# for j in 1:dims[2], i in 1:dims[1]
+#     pid = pid_grid[i, j]
+#     neighbors[pid] = (
+#         left   = pid_grid[mod1(i - 1, dims[1]), j],
+#         right  = pid_grid[mod1(i + 1, dims[1]), j],
+#         top    = pid_grid[i, mod1(j - 1, dims[2])],
+#         bottom = pid_grid[i, mod1(j + 1, dims[2])]
+#     )
+# end
 
-    # Step 2: Exchange handles (push buffer handles to neighbors who will send into them)
-    @sync for pid in pids
-        left   = neighbors[pid][:left]
-        right  = neighbors[pid][:right]
-        bottom = neighbors[pid][:bottom]
-        top    = neighbors[pid][:top]
 
-        @async begin
-            ch_from_left  = @fetchfrom pid recv_ψ[:from_left]
-            ch_from_right = @fetchfrom pid recv_ψ[:from_right]
-            ch_from_bottom = @fetchfrom pid recv_ψ[:from_bottom]
-            ch_from_top = @fetchfrom pid recv_ψ[:from_top]
 
-            # Send these channels to left/right/bottom/top neighbors
-            remotecall_wait(left) do
-                global send_ψ_right = ch_from_left
-            end
-            remotecall_wait(right) do
-                global send_ψ_left = ch_from_right
-            end
-            remotecall_wait(bottom) do
-                global send_ψ_top = ch_from_bottom
-            end
-            remotecall_wait(top) do
-                global send_ψ_bottom = ch_from_top
-            end
-        end
-    end
+# function run_anan()
+#     # Step 1: Each worker creates its own receive buffers locally
+#     @sync for pid in pids
+#         @async remotecall_wait(pid) do
+#             global recv_ψ = Dict{Symbol, RemoteChannel}()
+#             recv_ψ[:from_left]   = RemoteChannel(() -> Channel{Array{Float64,2}}(1))
+#             recv_ψ[:from_right]  = RemoteChannel(() -> Channel{Array{Float64,2}}(1))
+#             recv_ψ[:from_bottom] = RemoteChannel(() -> Channel{Array{Float64,2}}(1))
+#             recv_ψ[:from_top]    = RemoteChannel(() -> Channel{Array{Float64,2}}(1))
+#         end
+#     end
 
-    # Step 3: Define data and send/recv functions
-    @everywhere workers() begin
-        const ψ = fill(myid(), (8,8))
+#     # Step 2: Exchange handles (push buffer handles to neighbors who will send into them)
+#     @sync for pid in pids
+#         left   = neighbors[pid][:left]
+#         right  = neighbors[pid][:right]
+#         bottom = neighbors[pid][:bottom]
+#         top    = neighbors[pid][:top]
 
-        function send_ψ!()
-            put!(send_ψ_left,   ψ[3:4,3:6])
-            put!(send_ψ_right,  ψ[5:6,3:6])
-            put!(send_ψ_bottom, ψ[3:6,3:4])
-            put!(send_ψ_top,    ψ[3:6,5:6])
-        end
+#         @async begin
+#             ch_from_left  = @fetchfrom pid recv_ψ[:from_left]
+#             ch_from_right = @fetchfrom pid recv_ψ[:from_right]
+#             ch_from_bottom = @fetchfrom pid recv_ψ[:from_bottom]
+#             ch_from_top = @fetchfrom pid recv_ψ[:from_top]
 
-        function recv_ψ!()
-            ψ[1:2,3:6]       = take!(recv_ψ[:from_left])
-            ψ[end-1:end,3:6] = take!(recv_ψ[:from_right])
-            ψ[3:6,1:2]       = take!(recv_ψ[:from_bottom])
-            ψ[3:6,end-1:end] = take!(recv_ψ[:from_top])
-        end
-    end
+#             # Send these channels to left/right/bottom/top neighbors
+#             remotecall_wait(left) do
+#                 global send_ψ_right = ch_from_left
+#             end
+#             remotecall_wait(right) do
+#                 global send_ψ_left = ch_from_right
+#             end
+#             remotecall_wait(bottom) do
+#                 global send_ψ_top = ch_from_bottom
+#             end
+#             remotecall_wait(top) do
+#                 global send_ψ_bottom = ch_from_top
+#             end
+#         end
+#     end
 
-    # Step 4: Run exchange
-    println("\nBEFORE:")
-    for p in pids
-        println("PID $p → ", @fetchfrom p ψ)
-    end
+#     # Step 3: Define data and send/recv functions
+#     @everywhere workers() begin
+#         const ψ = fill(myid(), (8,8))
 
-    @sync for p in pids
-        @async remotecall_wait(() -> send_ψ!(), p)
-    end
+#         function send_ψ!()
+#             put!(send_ψ_left,   ψ[3:4,3:6])
+#             put!(send_ψ_right,  ψ[5:6,3:6])
+#             put!(send_ψ_bottom, ψ[3:6,3:4])
+#             put!(send_ψ_top,    ψ[3:6,5:6])
+#         end
 
-    @sync for p in pids
-        @async remotecall_wait(() -> recv_ψ!(), p)
-    end
+#         function recv_ψ!()
+#             ψ[1:2,3:6]       = take!(recv_ψ[:from_left])
+#             ψ[end-1:end,3:6] = take!(recv_ψ[:from_right])
+#             ψ[3:6,1:2]       = take!(recv_ψ[:from_bottom])
+#             ψ[3:6,end-1:end] = take!(recv_ψ[:from_top])
+#         end
+#     end
 
-    println("\nAFTER:")
-    for p in pids
-        println("PID $p → ", @fetchfrom p ψ)
-    end
-end
+#     # Step 4: Run exchange
+#     println("\nBEFORE:")
+#     for p in pids
+#         println("PID $p → ", @fetchfrom p ψ)
+#     end
 
-@time run_anan()
+#     @sync for p in pids
+#         @async remotecall_wait(() -> send_ψ!(), p)
+#     end
+
+#     @sync for p in pids
+#         @async remotecall_wait(() -> recv_ψ!(), p)
+#     end
+
+#     println("\nAFTER:")
+#     for p in pids
+#         println("PID $p → ", @fetchfrom p ψ)
+#     end
+# end
+
+# @time run_anan()
 
 
 # #!Async example ona  single process.
@@ -854,3 +854,41 @@ end
 #         @async put!(results, @fetchfrom pid slow_value())
 #     end
 # end
+
+
+
+
+
+
+
+
+
+#!LazyArrays tests
+using BenchmarkTools
+
+N = 500
+ϕ = rand(ComplexF64, N, N)
+ψ = rand(N, N)
+Z = rand(N, N)
+
+mρ² = 1.0
+α   = 0.5
+β   = 0.3
+
+function naive!(out, ϕ, ψ, Z, mρ², α, β)
+    out .= (mρ² .+ α .* abs2.(ϕ) .+ β .* ψ.^2) .* Z
+end
+
+out = similar(Z)
+@btime naive!(out, ϕ, ψ, Z, mρ², α, β);
+
+
+using LazyArrays
+
+function lazy!(out, ϕ, ψ, Z, mρ², α, β)
+    expr = @~ (mρ² .+ α .* abs2.(ϕ) .+ β .* ψ.^2) .* Z
+    copyto!(out, expr)   # evaluate lazily into out
+end
+
+out2 = similar(Z)
+@btime lazy!(out2, ϕ, ψ, Z, mρ², α, β);

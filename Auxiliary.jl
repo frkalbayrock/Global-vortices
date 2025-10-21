@@ -5,7 +5,6 @@ include("Parameters.jl")
 using .Parameters
 include("IndexMap.jl")
 using .IndexMap
-using OffsetArrays
 
 
 #This routine applies the periodic boundary conditions on 2-D lattice

@@ -46,8 +46,9 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
     vortexIO = open("data/vortices.dat","w")
 
 
-
+    #-Time Evolution
     for t=1:nt
+
 
         #--Move a time step
         @everywhere workers() half_step!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,1)
@@ -80,6 +81,7 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
             #----Check for Vortices----#
             vortex_pos, anti_vortex_pos = vortex_finder(ϕ_gl)
 
+
             #Record vortices
             if length(vortex_pos) != length(anti_vortex_pos)
                 error("Number of vortices doesn't match anti-vortices!")
@@ -91,11 +93,13 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
                 println(vortexIO,anti_vortex_pos)    #anti-vortex
             end
 
+
             #Record field and energy data
             writedlm(ϕdataIO, ϕ_gl[:,:])
             writedlm(ψdataIO, ψ_gl[:,:])
             writedlm(energyIO,totalE)
             writedlm(ZedIO,ZED_gl)
+
 
             #!
             #Check constraints

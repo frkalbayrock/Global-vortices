@@ -24,11 +24,11 @@ using .FindVortex
 using OffsetArrays
 using DelimitedFiles
 using Printf
-# !
-using BenchmarkTools
-using Profile
-using PProf
 using LinearAlgebra
+# !
+# using BenchmarkTools
+# using Profile
+# using PProf
 
 
 
@@ -129,10 +129,7 @@ function run_ev()
 
 
     #----Initial Conditions----#
-    a = @allocated begin #!we keep these now until we finish the testing
-    initialConditions!(ϕ_gl,ψ_gl)
-    end
-    println("Initial conditions allocated: ",a/1e6," MB")
+    @time initialConditions!(ϕ_gl,ψ_gl)
 
     #Record initial conditions
     writedlm(ioϕ,ϕ_gl[:,:])
@@ -186,163 +183,3 @@ end
 rmprocs(workers())
 println("Removing workers done.")
 #END OF CODE
-
-
-
-
-
-#!
-# open("data/energies/energy-density.dat","w") do io
-#     Edensity_two = ravelDimension(Edensity)
-#     println(typeof(Edensity_two))
-#     writedlm(io,Edensity_two)
-# end
-
-#!
-# Z_f = Array{ComplexF64,4}(undef, Nx,Nx,Ny,Ny)
-# Z_f = mapZTo4Index(Z[:,:,1]) 
-# @time Z[:,:,1] .= mapZTo2Index(Z_f) 
-
-
-#!
-#1d lattice
-# ZED = ravelDimension(ZED_s)
-#2d lattice 
-# ZED = energy(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
-
-# #!
-# open("data/energies/Z-ED.dat","w") do io
-#     writedlm(io,ZED)
-# end
-# open("data/psi.dat","w") do io
-#     writedlm(io,ψ[:,:,0])
-# end
-
-#!
-# # meanSqrRenorm = 18.33
-# width=0.05
-# amp=10
-# vel=0.5
-# vx=vel
-# vy=vel
-# γ=1/sqrt(1-vel^2)
-# x0=5
-# for j=lx:rx
-#     x=j*dx
-#     for k=lx:rx
-#         y=k*dy
-#         # #Boost in y-direction
-#         # ψ[j,k,0] =  amp*exp(-(γ*y)^2*width)*exp(-x^2*width)
-#         # dψdt[j,k,0] = 2amp *width *vel *γ^2 *y *exp(-(γ*y)^2*width)*exp(-x^2*width)
-#         # #Boost in x-direction
-#         # ψ[j,k,0] =  amp*exp(-(γ*x)^2*width)*exp(-y^2*width)
-#         # dψdt[j,k,0] = 2amp *width *vel *γ^2 *x *exp(-(γ*x)^2*width)*exp(-y^2*width)
-#         #Boost in x and y-direction
-#         ψ[j,k,0] = amp*exp(-width/(vx^2 + vy^2) * ( (x *vy - y *vx)^2 + (x* vx + y *vy)^2 * γ^2 ))
-#         dψdt[j,k,0] = ( 2amp *width *γ^2 *(x *vx + y*vy) 
-#                         *exp(-width/(vx^2 + vy^2) * ( (x *vy - y *vx)^2 + (x* vx + y *vy)^2 * γ^2 ))  )
-#     end
-# end
-# x = collect(lx*dx:dx:rx*dx)
-# y = collect(ly*dy:dy:ry*dy)
-# # psi2 = OffsetArray(ψ[:,:,0],1:Nx,1:Ny)
-# psi2 = OffsetArray(dψdt[:,:,0],1:Nx,1:Ny)
-# surface(x,y,psi2[:,:]',zlims=(-1,1),xlabel="x",ylabel="y",zlabel="ψ")
-# # plot(x,psi2[:,25],xlabel="x",ylabel="ψ")
-# gui()
-# savefig("PLotting/plots/x-y-boosted-psi-dot.png")
-# # @time begin
-#     # @btime time_evolve!(ϕ,ψ,Z,dϕdt,dψdt,dZdt,meanSqrRenorm)
-#     # io = open("data/psi.dat","w")
-# # @time begin
-# meanSqrRenorm = 18.33
-# end
-# end
-
-
-# #!
-# open("data/Z-1timestep.dat","w") do io
-#     writedlm(io,Z[:,:,1])
-#     writedlm(io,"\n")
-#     writedlm(io,dZdt[:,:,1])
-# end
-
-
-
-
-
-# baban=zeros(Nx,Ny)
-# x = y = collect(lx*dx:dx:rx*dx)
-# surface(x, y, ZED, c=:viridis)
-# surface!(x,y,baban,c=:viridis)
-# gui()
-# readline()
-# savefig("plots/ZED.png")
-
-#!-----TESTING-----
-#!
-# open("data/phi.dat","w") do io
-#     writedlm(io,ϕ[:,:,0])
-# end
-# open("data/psi-2d.dat","w") do io2
-#     writedlm(io2,ψ[:,:,0])
-# end
-
-# #!
-# ψ_s = zeros(N^2,2)
-# @time begin
-#     ψ_s[:,1] =  @views flattenDimension(ψ[:,:,0])
-# end
-# ψ[:,:,0] .= ravelDimension(view(ψ_s,:,1))
-
-
-# x = y = collect(lx*dx:dx:rx*dx)
-# # surface(x, y, abs2.(ϕ[:,:,0]), c=:viridis)#, zlim=(-10,10))
-# surface!(x,y,ψ[:,:,0]',c=:viridis, xlabel="x", ylabel="y")
-# gui()
-# readline()
-# savefig("psi2.png")
-
-
-# ϕ_s = zeros(N^2)
-# ψ_s = zeros(N^2)
-
-# Ωzero, omegaZero = omegaIC(ϕ_s,ψ_s)
-
-# # open("data/sqrtTest.txt","w") do io
-# #     # writedlm(io,round.(Int,Ωzero))
-# #     writedlm(io,Ωzero)
-# #     write(io,"\n")
-# #     # writedlm(io,round.(Int,omegaZero))
-# #     writedlm(io,omegaZero)
-# # end
-
-# #!OMEGA TESTER -- keep for now in case need to test again.
-# # io=open("data/ananTest.txt","w")
-
-# # writedlm("data/anan.txt",Ω)
-# # writedlm(io,"CCD")
-# # writedlm(io,round.(Int,CCD))
-# # writedlm(io,"At")
-# # writedlm(io,round.(Int,Ã))
-# # writedlm(io,"Bt")
-# # writedlm(io,round.(Int,B̃))
-# # writedlm(io,"A")
-# # writedlm(io,round.(Int,A))
-# # writedlm(io,"B")
-# # writedlm(io,round.(Int,B))
-# # writedlm(io,"W")
-# # writedlm(io,round.(Int,W))
-# # writedlm(io,"Q")
-# # writedlm(io,round.(Int,Q))
-
-# # close(io)
-
-# # open("data/omegaCompare.txt","w") do io
-# #     write(io,"Ω\n")
-# #     writedlm(io,round.(Int,Ω))
-# #     write(io,"\nomegaSummed\n")
-# #     omegaSummed = CCD.+Ã.+B̃.+A.+B.+W.+Q
-# #     writedlm(io,round.(Int,omegaSummed))
-# # end
-
