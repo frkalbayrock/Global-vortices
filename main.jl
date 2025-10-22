@@ -163,6 +163,7 @@ function run_ev()
     #----Check for Vortices----#
     vortex_pos, anti_vortex_pos = vortex_finder(ϕ_gl)   #!this may not be necessary.
  
+
     #Close data files
     close(ioϕ)
     close(ioψ)

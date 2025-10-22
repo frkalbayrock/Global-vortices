@@ -1,5 +1,7 @@
 # CHANGELOG
 
+### v1.6.1 - Cleanup
+Only cosmetic changes and some commented out old code is removed.
 
 ### v1.6.0 - Sqrt(Ω) Changes and 4 Gaussian Profiles
 

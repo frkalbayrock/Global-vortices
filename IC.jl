@@ -12,6 +12,8 @@ include("lapack_wrappers.jl")
 
 
 
+
+
 #------------------------------------------------------------------------------------------------#
 #initialConditions sets the initial conditions for the fields ϕ,ψ,Z and calculates the renormalization factor
 export initialConditions!
@@ -48,7 +50,6 @@ function initialConditions!(ϕ_gl,ψ_gl)
     #4-indexed Z and Ω
     S_Ωzero_f = mapZTo4Index(S_Ωzero)
     inv_S_Ωzero_f = mapZTo4Index(inv_S_Ωzero)
-
 
 
     #---Chunk Z and send it to workers
@@ -111,6 +112,7 @@ end
 
 
 
+
 @inline function get_worker_slices(p,inv_S_Ωzero_f,S_Ωzero_f)
     #Get the global ends of the lattice chunk
         #chunker() is written with offset arrays in mind.
@@ -153,14 +155,6 @@ end
             δϕ = f_amp*sin(κ*x)sin(κ*y) 
             ϕ[j,k] = η #+ im*δϕ
             dϕdt[j-padd,k-padd,1] = 0
-            # ψ[j,k] = amp*(exp( -width/(vx^2 + vy^2)
-            #                    * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )       
-            #               + exp( -width/(vx^2 + vy^2) 
-            #                  * ( (x2 *vy - y2 *vx)^2 + (x2* vx + y2 *vy)^2 * γ^2 )) )
-            # dψdt[j-padd,k-padd,1] = ( 2amp *width *γ^2 *(x1 *(-vx) + y1 *(-vy)) 
-            #                 *exp(-width/(vx^2 + vy^2) * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1 *(-vy))^2 * γ^2 ))
-            #                 + 2amp *width *γ^2 *(x2 *(vx) + y2 *(vy)) 
-            #                 *exp(-width/(vx^2 + vy^2) * ( (x2 *(vy) - y2 *(vx))^2 + (x2* (vx) + y2 *(vy))^2 * γ^2 ))    )
             ψ[j,k] = amp*(
                           exp( -width/(vx^2 + vy^2)
                                 * ( (x1 *(-vy) - y1 *(-vx))^2 + (x1* (-vx) + y1*(-vy))^2 * γ^2 ) )  #-1-     
@@ -303,6 +297,8 @@ return meanSqrRenorm
 end
 
 
+
+
 export zeroPointEnergy
 function zeroPointEnergy()
 
@@ -328,5 +324,8 @@ function zeroPointEnergy()
     println("zPE= ",zPE)
 return zPE
 end
+
+
+
 
 end #module

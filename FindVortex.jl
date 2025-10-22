@@ -52,6 +52,7 @@ end
 
 
 
+
 #Calculates the winding number of a given plaquette.
 #This routine can only find the windings of ±1 -> thus, this can only be used from bottom-up approach for finding vortices.
 export winding_number #!remove after testing done.

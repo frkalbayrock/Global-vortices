@@ -64,6 +64,7 @@ end
 
 
 
+
 #-Tridiagonal Eigen Solver ---> DTEDC(Divide and conquer method)
 """
     stedc_manual(T::SymTridiagonal{Float64}; compute_vectors::Bool=true)

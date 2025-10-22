@@ -7,6 +7,8 @@ include("IndexMap.jl")
 using .IndexMap
 
 
+
+
 #This routine applies the periodic boundary conditions on 2-D lattice
 #It takes the lattice point (j,k) and determines nnl (nearest neighbour left) and nnr (nearest neighbour right) on each direction.
 #If the point (j,k) is at the boundary the nnl_x,y and nnr_x,y are set accordingly.
@@ -28,6 +30,8 @@ function pbc2D(j,k)
 
     return nnl_x, nnr_x, nnl_y, nnr_y 
 end
+
+
 
 
 #This routine find the nearest neighbours in x and y direction of a 2D lattice with pbc that is flattened. 
@@ -100,7 +104,6 @@ end
 function chunk_cart(proc_id::Int)
     i_procs = Int(mod((proc_id-2),nprocs_perdim[1]))
     j_procs = Int((proc_id-2 - i_procs)/nprocs_perdim[1])
-
 return i_procs, j_procs
 end
 
@@ -157,6 +160,7 @@ end
 
 
 
+
 #---Transfer Functions
 #   So far this is the only way it works with @fetchfrom that's why it is done not so clever way, on purpose.
 
@@ -204,6 +208,7 @@ end
 
 
 
+
 @everywhere workers() function getData_All(neighbour::Int)
 
     return (
@@ -215,9 +220,8 @@ end
 end
 
 
-# @everywhere workers() 
-# export getData_ψ
-# function getData_ψ(neighbour::Int,t::Int)
+
+
 @everywhere workers() function getData_ψ(neighbour::Int) #! for now i have to define them like this for name space issues, 
                                                                     #! also needed "using Distributed" in this module
                                                                     #!I wanna make Auxiliary not a module eventually.
@@ -236,9 +240,8 @@ end
 end
 
 
-# @everywhere workers() 
-# export getData_ϕ
-# function getData_ϕ(neighbour::Int,t::Int)
+
+
 @everywhere workers() function getData_ϕ(neighbour::Int)
     #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
     if neighbour == 1
@@ -255,9 +258,8 @@ end
 end
 
 
-# @everywhere workers() 
-# export getData_Z
-# function getData_Z(neighbour::Int,t::Int)
+
+
 @everywhere workers() function getData_Z(neighbour::Int)
     #Notation: neighbour: 1=left, 2=right, 3=bottom, 4=top
     if neighbour == 1
@@ -274,6 +276,6 @@ end
 end
 
 
-#
+
 
 end #module

@@ -50,6 +50,9 @@ function constraints_checker(Z,dZdt)
 
 end
 
+
+
+
 #Checks the conserved quantities of CQC.
 #By CQC:  J=conserved_1=1 // J_bar=conserved_2=0 
 export conserved_checker

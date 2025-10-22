@@ -35,8 +35,11 @@ function flattenDimension(f)
     #-Version 2 (uses the intrinsic flatten function from Julia)
         f_s = collect(Iterators.flatten(f'))    #! seems to be faster and uses less allocations/memory
 
-    return f_s
+return f_s
 end
+
+
+
 
 export ravelDimension
 #This routine maps back the "function values" 1-d (row-major) flattened dimension to the 2-d lattice dimensions.
@@ -61,6 +64,9 @@ function ravelDimension(f)
 
 return f_t
 end
+
+
+
 
 export mapZTo4Index
 #This routine is particular for Z and dZdt which have 4-indices in 2d CQC setting.
@@ -94,6 +100,9 @@ function mapZTo4Index(ZordZ)
 
 return ZordZ_t
 end
+
+
+
 
 export mapZTo2Index
 function mapZTo2Index(ZordZ)
@@ -129,8 +138,11 @@ function mapZTo2Index(ZordZ)
             Z_Flatten[J,:] .= flattenDimension(Z_spaceFlatten[J,:,:])
         end
 
-    return Z_Flatten
+return Z_Flatten
 end
+
+
+
 
 #Reducing a 2d lattice into a 1d one using row-major ordering. (Flattenning)
 #Takes two index and reduces to one and returns.
@@ -141,8 +153,11 @@ function twoIndexToOne(j,k)
     #Map the 2d coordinate to 1d one
     J = Int((j-1)*N + k)
     
-    return J
+return J
 end
+
+
+
 
 #Inverse map from flattened lattice to back to 2d lattice.
 #Takes an index from 1d latt and returns the coordinates in the 2d physical lattice.
@@ -153,6 +168,7 @@ function oneIndexToTwo(J)
 
 return j,k
 end
+
 
 
 
