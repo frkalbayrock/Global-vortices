@@ -6,7 +6,7 @@ using .Parameters
 
 
 export vortex_finder
-function vortex_finder(ϕ)
+function vortex_finder(ϕ,time)
 
     vortex_count = 0
     anti_vortex_count = 0
@@ -41,10 +41,8 @@ function vortex_finder(ϕ)
     end
 
     if vortex_count > 0 || anti_vortex_count > 0 
-        println("Number of vortices: ",vortex_count)
-        println("Number of anti-vortices: ", anti_vortex_count)
-    else
-        println("No vortex :(")
+        println("--Vortices found at time step= ", time, "/", nt)
+        println("# of vortices/anti-vortices: ", vortex_count, " / ", anti_vortex_count)
     end
 
 return vortex_pos, anti_vortex_pos

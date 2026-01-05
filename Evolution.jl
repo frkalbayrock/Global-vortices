@@ -80,7 +80,7 @@ function time_evolve!(ϕ_gl,ψ_gl,ZED_gl,meanSqrRenorm,zPE)
 
 
             #----Check for Vortices----#
-            vortex_pos, anti_vortex_pos = vortex_finder(ϕ_gl)
+            vortex_pos, anti_vortex_pos = vortex_finder(ϕ_gl,t)
 
 
             #Record vortices

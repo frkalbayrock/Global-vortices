@@ -66,6 +66,7 @@ end
 
 
 
+
 function gaussian_separation() 
 
     #Create the guide Gaussian for determining separation
@@ -104,11 +105,15 @@ end
 
 
 
+
+
 @everywhere workers() function send_and_update(data)
     Z[padd+1:Nx_loc+padd, :, 
         padd+1:Ny_loc+padd, :] .= -im/sqrt(2) .* data.inv_s_slice
     dZdt[:,:,:,:,1]            .=   1/sqrt(2) .* data.s_slice
 end
+
+
 
 
 
@@ -133,14 +138,21 @@ end
 
 
 
+
+
 @everywhere workers() function ic_ϕ_ψ!(ϕ,ψ,dϕdt,dψdt,r0)
 
     #Find the chunk's physical coordinates and physical ends
     lx_p, rx_p, ly_p, ry_p = chunker(myid())
 
+    # #--Gaussian Parameters ->(for cluster version)
+    # width=2.0
+    # vx=vel/sqrt(2)
+    # vy=vel/sqrt(2)
+    # γ=1/sqrt(1-(vx^2+vy^2))
 
     #ϕ fluctuation parameters
-    κ=2*2pi/L
+    κ=1*2pi/L
     f_amp = 0.25
 
     #ϕ and ψ i.c.
@@ -153,7 +165,7 @@ end
             y1 = y3 = y-r0
             y2 = y4 = y+r0
             δϕ = f_amp*sin(κ*x)sin(κ*y) 
-            ϕ[j,k] = η #+ im*δϕ
+            ϕ[j,k] = η + im*δϕ
             dϕdt[j-padd,k-padd,1] = 0
             ψ[j,k] = amp*(
                           exp( -width/(vx^2 + vy^2)
@@ -180,6 +192,8 @@ end
         end
     end
 end
+
+
 
 
 
@@ -279,6 +293,8 @@ end
 
 
 
+
+
 export renormalization
     #Renormalization is done using the <ρ^2>_0 factor which we calculate here.
     #<ρ^2>_0 is calculated using Z values when |ϕ|=η and ψ=0. 
@@ -295,6 +311,8 @@ function renormalization()
 
 return meanSqrRenorm
 end
+
+
 
 
 
@@ -324,6 +342,8 @@ function zeroPointEnergy()
     println("zPE= ",zPE)
 return zPE
 end
+
+
 
 
 

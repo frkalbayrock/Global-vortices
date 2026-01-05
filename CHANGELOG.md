@@ -1,5 +1,31 @@
 # CHANGELOG
 
+### v1.6.2 - Minor updates
+All the listed changes:
+
+#### Evolution.jl:
+- vortex_finder() gets one extra argument now. (More below)
+
+#### FindVortex.jl:
+- Cosmetic changes on the printing the results on the console: 
+    - Removed the printing when no vortices are found.
+    - Small changes in the printed statement when vortices are detected.
+- vortex_finder() now prints the time when the vortices are found. Thus, we send the time coordinate into this function now as a new argument.
+
+#### IC.jl:
+- There is new addition that is commented out inside ic_ϕ_ψ!(). This is for cluster when we do parameter space search which uses CLI arguments from the batch script. I will probably add the cluster version of the code as a new branch but wanted keep this here just in case.
+- Kappa's multiplier changed to be 1 and the manual pertubations are permenantly turned on now.
+
+#### main.jl:
+- We now print the parameters width, amplitude and velocity in the info statement in the console for easy read.
+- Small cosmetic changes.
+
+#### Parameters.jl:
+- vx and vy are now defined to be the same based on a given velocity value; vx=vy=v/sqrt(2)
+
+
+
+
 ### v1.6.1 - Cleanup
 Only cosmetic changes and some commented out old code is removed.
 

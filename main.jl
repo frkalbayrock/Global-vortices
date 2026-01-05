@@ -121,6 +121,7 @@ function run_ev()
     println("Threads: ",Threads.nthreads())#!
     println("BLAS-Threads: ",BLAS.get_num_threads())
     println("Procs: ",nprocs())
+    println("Width = $(width) // Amplitude = $(amp) // Velocity = $(vel)")
     #Initial Data files
     ioϕ=open("data/initial_phi.dat","w")
     ioψ=open("data/initial_psi.dat","w")
@@ -136,7 +137,7 @@ function run_ev()
     writedlm(ioψ,ψ_gl[:,:])
 
 
-    # #!Turn on if you wanna check constraints - skipping for now
+    # #!Turn on if you wanna check the constraints
     # @views Z_t = mapZTo2Index(Z_gl[:,:,:,:])
     # @views dZdt_t = mapZTo2Index(dZdt_gl[:,:,:,:])
     # @views constraints_checker(Z_t[:,:],dZdt_t[:,:])
@@ -161,7 +162,7 @@ function run_ev()
 
 
     #----Check for Vortices----#
-    vortex_pos, anti_vortex_pos = vortex_finder(ϕ_gl)   #!this may not be necessary.
+    vortex_pos, anti_vortex_pos = vortex_finder(ϕ_gl,nt)   #!this may not be necessary.
  
 
     #Close data files

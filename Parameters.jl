@@ -3,7 +3,7 @@ export dx,dy,dt,N,Nx,Ny,L,lx,rx,ly,ry,nt,nsnaps, dt_half,dx2,dy2,N2
 export λ,α,β,η,m_ρ,m_ϕ,m_ψ
 export nprocs_perdim,Nx_loc,Ny_loc,padding_size,padd
 export lx_l,rx_l,ly_l,ry_l 
-export width, amp, vx, vy, v, γ
+export width, amp, vx, vy, v, γ, vel
 
 #--Lattice Parameters
 const N=20
@@ -35,10 +35,10 @@ const m_ψ=1
 
 #--Gaussian Parameters
 const width=2.0
-const amp=10
-const vx=0.3
-const vy=0.4
-const v = sqrt(vx^2 + vy^2)
+const amp=20.0
+const vel=0.4
+const vx=vel/sqrt(2)
+const vy=vel/sqrt(2)
 const γ=1/sqrt(1-(vx^2+vy^2))
 
 #--Data Recorder
